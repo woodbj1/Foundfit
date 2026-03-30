@@ -1,0 +1,135 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { getCalendarBusySlots } from '@/lib/google-calendar'
+import { addMinutes, format, parse, setHours, setMinutes, isAfter, isBefore, areIntervalsOverlapping } from 'date-fns'
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const dateStr = searchParams.get('date')
+  const trainerId = searchParams.get('trainer_id')
+
+  if (!dateStr) {
+    return NextResponse.json({ error: 'date is required' }, { status: 400 })
+  }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const date = new Date(dateStr + 'T00:00:00')
+  const dayOfWeek = date.getDay()
+
+  // Get default duration from settings
+  const { data: durationSetting } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'default_duration')
+    .single()
+  const duration = parseInt(durationSetting?.value || '50')
+
+  // Find a trainer — if not specified, get the first active one
+  let targetTrainerId = trainerId
+  if (!targetTrainerId) {
+    const { data: firstTrainer } = await supabase
+      .from('trainers')
+      .select('id')
+      .eq('is_active', true)
+      .limit(1)
+      .single()
+    if (!firstTrainer) {
+      return NextResponse.json({ slots: [] })
+    }
+    targetTrainerId = firstTrainer.id
+  }
+
+  // Get availability blocks for this day
+  const { data: blocks } = await supabase
+    .from('availability_blocks')
+    .select('*')
+    .eq('trainer_id', targetTrainerId)
+    .eq('day_of_week', dayOfWeek)
+    .order('start_time')
+
+  if (!blocks || blocks.length === 0) {
+    return NextResponse.json({ slots: [] })
+  }
+
+  // Get existing bookings for this day
+  const dayStart = new Date(date)
+  dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(date)
+  dayEnd.setHours(23, 59, 59, 999)
+
+  const { data: existingBookings } = await supabase
+    .from('bookings')
+    .select('start_time, end_time')
+    .eq('trainer_id', targetTrainerId)
+    .in('status', ['pending', 'approved'])
+    .gte('start_time', dayStart.toISOString())
+    .lte('start_time', dayEnd.toISOString())
+
+  // Get Google Calendar busy slots
+  let gcalBusy: { start: string; end: string }[] = []
+  try {
+    gcalBusy = await getCalendarBusySlots(date)
+  } catch (error) {
+    console.error('Google Calendar error (continuing without):', error)
+  }
+
+  // Generate available slots
+  const allSlots: { start: string; end: string }[] = []
+
+  for (const block of blocks) {
+    const [startH, startM] = block.start_time.split(':').map(Number)
+    const [endH, endM] = block.end_time.split(':').map(Number)
+
+    let slotStart = new Date(date)
+    slotStart.setHours(startH, startM, 0, 0)
+
+    const blockEnd = new Date(date)
+    blockEnd.setHours(endH, endM, 0, 0)
+
+    // Don't show past slots for today
+    const now = new Date()
+    if (slotStart < now && date.toDateString() === now.toDateString()) {
+      // Move slot start to next available time after now
+      while (slotStart < now) {
+        slotStart = addMinutes(slotStart, duration)
+      }
+    }
+
+    while (addMinutes(slotStart, duration) <= blockEnd) {
+      const slotEnd = addMinutes(slotStart, duration)
+      const slotInterval = { start: slotStart, end: slotEnd }
+
+      // Check against existing bookings
+      const conflictsWithBooking = existingBookings?.some((booking) =>
+        areIntervalsOverlapping(slotInterval, {
+          start: new Date(booking.start_time),
+          end: new Date(booking.end_time),
+        })
+      )
+
+      // Check against Google Calendar
+      const conflictsWithGcal = gcalBusy.some((busy) =>
+        areIntervalsOverlapping(slotInterval, {
+          start: new Date(busy.start),
+          end: new Date(busy.end),
+        })
+      )
+
+      if (!conflictsWithBooking && !conflictsWithGcal) {
+        allSlots.push({
+          start: slotStart.toISOString(),
+          end: slotEnd.toISOString(),
+        })
+      }
+
+      slotStart = addMinutes(slotStart, duration)
+    }
+  }
+
+  return NextResponse.json({ slots: allSlots, trainer_id: targetTrainerId })
+}
