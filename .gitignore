@@ -27,9 +27,11 @@ yarn-error.log*
 *.pem
 Thumbs.db
 dump.sql
+deno.lock
 
 # vercel
 .vercel
+.netlify
 
 # typescript
 *.tsbuildinfo
