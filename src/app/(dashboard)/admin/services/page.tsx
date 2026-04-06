@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,21 +22,25 @@ const SERVICE_TYPES: { value: ServiceType; label: string }[] = [
   { value: 'meal_plan', label: 'Meal Plan' },
 ]
 
-function ServiceForm({ service, onSave, onClose }: {
+function ServiceForm({
+  service,
+  onSave,
+  onClose,
+}: {
   service?: Service
-  onSave: () => void
+  onSave: () => Promise<void> | void
   onClose: () => void
 }) {
+  const [supabase] = useState(() => createClient())
   const [name, setName] = useState(service?.name || '')
   const [description, setDescription] = useState(service?.description || '')
-  const [type, setType] = useState<ServiceType>(service?.type as ServiceType || 'single')
+  const [type, setType] = useState<ServiceType>(service?.type || 'single')
   const [price, setPrice] = useState(service ? (service.price / 100).toFixed(2) : '')
   const [sessionCount, setSessionCount] = useState(service?.session_count?.toString() || '')
   const [duration, setDuration] = useState(service?.duration_minutes?.toString() || '50')
   const [maxWeekly, setMaxWeekly] = useState(service?.max_weekly_bookings?.toString() || '3')
   const [isActive, setIsActive] = useState(service?.is_active ?? true)
   const [saving, setSaving] = useState(false)
-  const supabase = createClient()
 
   async function handleSave() {
     if (!name || !price) {
@@ -46,31 +49,33 @@ function ServiceForm({ service, onSave, onClose }: {
     }
 
     setSaving(true)
-    const data = {
+    const payload = {
       name,
       description: description || null,
       type,
       price: Math.round(parseFloat(price) * 100),
-      session_count: type === 'unlimited' || type === 'meal_plan' ? null : parseInt(sessionCount) || 1,
-      duration_minutes: parseInt(duration) || 50,
-      max_weekly_bookings: parseInt(maxWeekly) || 3,
+      session_count: type === 'unlimited' || type === 'meal_plan' ? null : parseInt(sessionCount, 10) || 1,
+      duration_minutes: parseInt(duration, 10) || 50,
+      max_weekly_bookings: parseInt(maxWeekly, 10) || 3,
       is_active: isActive,
     }
 
-    let error
+    let error: { message?: string } | null = null
+
     if (service) {
-      ({ error } = await supabase.from('services').update(data).eq('id', service.id))
+      ;({ error } = await supabase.from('services').update(payload).eq('id', service.id))
     } else {
-      ({ error } = await supabase.from('services').insert(data))
+      ;({ error } = await supabase.from('services').insert(payload))
     }
 
     if (error) {
       toast.error('Failed to save service')
     } else {
       toast.success(service ? 'Service updated!' : 'Service created!')
-      onSave()
+      await onSave()
       onClose()
     }
+
     setSaving(false)
   }
 
@@ -78,22 +83,29 @@ function ServiceForm({ service, onSave, onClose }: {
     <div className="space-y-4">
       <div className="space-y-2">
         <Label>Name</Label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Unlimited Monthly" />
+        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Unlimited Monthly" />
       </div>
       <div className="space-y-2">
         <Label>Description</Label>
-        <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description..." rows={2} />
+        <Textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Brief description..."
+          rows={2}
+        />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Type</Label>
-          <Select value={type} onValueChange={(v) => v && setType(v as ServiceType)}>
+          <Select value={type} onValueChange={(value) => setType(value as ServiceType)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SERVICE_TYPES.map((t) => (
-                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+              {SERVICE_TYPES.map((serviceType) => (
+                <SelectItem key={serviceType.value} value={serviceType.value}>
+                  {serviceType.label}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -106,7 +118,12 @@ function ServiceForm({ service, onSave, onClose }: {
       {(type === 'pack' || type === 'single') && (
         <div className="space-y-2">
           <Label>Session Count</Label>
-          <Input type="number" value={sessionCount} onChange={(e) => setSessionCount(e.target.value)} placeholder="e.g., 6" />
+          <Input
+            type="number"
+            value={sessionCount}
+            onChange={(e) => setSessionCount(e.target.value)}
+            placeholder="e.g. 6"
+          />
         </div>
       )}
       <div className="grid grid-cols-2 gap-4">
@@ -125,7 +142,7 @@ function ServiceForm({ service, onSave, onClose }: {
       </div>
       <div className="flex gap-2 pt-2">
         <Button onClick={handleSave} disabled={saving} className="flex-1">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+          {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
           {service ? 'Update' : 'Create'} Service
         </Button>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -135,11 +152,28 @@ function ServiceForm({ service, onSave, onClose }: {
 }
 
 export default function AdminServicesPage() {
+  const [supabase] = useState(() => createClient())
   const [services, setServices] = useState<Service[]>([])
   const [loading, setLoading] = useState(true)
   const [editService, setEditService] = useState<Service | undefined>(undefined)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const supabase = createClient()
+
+  useEffect(() => {
+    let active = true
+
+    async function load() {
+      const { data } = await supabase.from('services').select('*').order('type').order('price')
+      if (!active) return
+      if (data) setServices(data as Service[])
+      setLoading(false)
+    }
+
+    void load()
+
+    return () => {
+      active = false
+    }
+  }, [supabase])
 
   async function loadServices() {
     const { data } = await supabase.from('services').select('*').order('type').order('price')
@@ -147,10 +181,12 @@ export default function AdminServicesPage() {
     setLoading(false)
   }
 
-  useEffect(() => { loadServices() }, [])
-
   if (loading) {
-    return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+    return (
+      <div className="flex justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
   }
 
   return (
@@ -158,12 +194,18 @@ export default function AdminServicesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Services</h1>
-          <p className="text-muted-foreground mt-1">Manage training packages and offerings</p>
+          <p className="mt-1 text-muted-foreground">Manage training packages and offerings</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditService(undefined) }}>
+        <Dialog
+          open={dialogOpen}
+          onOpenChange={(open) => {
+            setDialogOpen(open)
+            if (!open) setEditService(undefined)
+          }}
+        >
           <DialogTrigger className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90">
-              <Plus className="h-4 w-4" />
-              Add Service
+            <Plus className="h-4 w-4" />
+            Add Service
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -175,7 +217,10 @@ export default function AdminServicesPage() {
             <ServiceForm
               service={editService}
               onSave={loadServices}
-              onClose={() => { setDialogOpen(false); setEditService(undefined) }}
+              onClose={() => {
+                setDialogOpen(false)
+                setEditService(undefined)
+              }}
             />
           </DialogContent>
         </Dialog>
@@ -183,9 +228,9 @@ export default function AdminServicesPage() {
 
       <div className="space-y-3">
         {services.map((service) => (
-          <div key={service.id} className="flex items-center justify-between p-4 rounded-lg border bg-card">
+          <div key={service.id} className="flex items-center justify-between rounded-lg border bg-card p-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
                 <Package className="h-5 w-5 text-primary" />
               </div>
               <div>
@@ -193,8 +238,11 @@ export default function AdminServicesPage() {
                   <h3 className="font-medium">{service.name}</h3>
                   {!service.is_active && <Badge variant="secondary">Inactive</Badge>}
                 </div>
-                <div className="flex items-center gap-3 text-sm text-muted-foreground mt-0.5">
-                  <span className="font-semibold text-foreground">{formatPrice(service.price)}{service.type === 'unlimited' ? '/mo' : ''}</span>
+                <div className="mt-0.5 flex items-center gap-3 text-sm text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {formatPrice(service.price)}
+                    {service.type === 'unlimited' ? '/mo' : ''}
+                  </span>
                   <span>{service.type}</span>
                   {service.session_count && <span>{service.session_count} sessions</span>}
                   <span>{service.duration_minutes}min</span>
@@ -204,7 +252,10 @@ export default function AdminServicesPage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => { setEditService(service); setDialogOpen(true) }}
+              onClick={() => {
+                setEditService(service)
+                setDialogOpen(true)
+              }}
             >
               <Pencil className="h-4 w-4" />
             </Button>

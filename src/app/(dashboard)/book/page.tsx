@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button'
 import { AlertCircle, ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
 import type { Profile } from '@/lib/types'
+import { getBookableServiceOptions, getTotalRemainingSessions } from '@/lib/product-access'
 
 interface BookingTrainer {
   id: string
   user_id: string
   bio: string | null
   is_active: boolean
+  onboarding_completed_at: string | null
   profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url'>
 }
 
@@ -21,32 +23,38 @@ export default async function BookPage() {
   if (!user) redirect('/login')
 
   // Check for active subscription
-  const { data: subscription } = await supabase
+  const { data: subscriptions } = await supabase
     .from('subscriptions')
-    .select('id, service:services(name, max_weekly_bookings)')
+    .select('id, service_id, service:services(*)')
     .eq('client_id', user.id)
     .eq('status', 'active')
-    .single()
 
   // Check for active session packs
   const { data: packs } = await supabase
     .from('session_packs')
-    .select('id, total_sessions, used_sessions, service:services(name)')
+    .select('id, service_id, total_sessions, used_sessions, service:services(*)')
     .eq('client_id', user.id)
 
-  const activePacks = packs?.filter(p => p.used_sessions < p.total_sessions) ?? []
-  const totalSessionsLeft = activePacks.reduce(
-    (sum, p) => sum + (p.total_sessions - p.used_sessions),
-    0
-  )
+  const normalizedSubscriptions = (subscriptions ?? []).map((subscription) => ({
+    ...subscription,
+    service: Array.isArray(subscription.service) ? subscription.service[0] : subscription.service,
+  }))
 
-  const hasActiveAccess = !!subscription || activePacks.length > 0
+  const normalizedPacks = (packs ?? []).map((pack) => ({
+    ...pack,
+    service: Array.isArray(pack.service) ? pack.service[0] : pack.service,
+  }))
+
+  const bookableServices = getBookableServiceOptions(normalizedSubscriptions, normalizedPacks)
+  const totalSessionsLeft = getTotalRemainingSessions(normalizedPacks)
+  const hasActiveAccess = bookableServices.length > 0
 
   // Get active trainers
   const { data: trainers } = await supabase
     .from('trainers')
-    .select('id, user_id, bio, is_active, profile:profiles!trainers_user_id_fkey(id, full_name, avatar_url)')
+    .select('id, user_id, bio, is_active, onboarding_completed_at, profile:profiles!trainers_user_id_fkey(id, full_name, avatar_url)')
     .eq('is_active', true)
+    .not('onboarding_completed_at', 'is', null)
 
   // Get travel fee
   const { data: travelFeeSetting } = await supabase
@@ -92,7 +100,7 @@ export default async function BookPage() {
       </div>
 
       {/* Sessions remaining notice */}
-      {!subscription && totalSessionsLeft > 0 && (
+      {totalSessionsLeft > 0 && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-lg px-4 py-2.5 w-fit">
           <ShoppingCart className="h-4 w-4" />
           <span>
@@ -107,8 +115,7 @@ export default async function BookPage() {
           profile: Array.isArray(trainer.profile) ? trainer.profile[0] : trainer.profile,
         })) as BookingTrainer[]}
         travelFee={travelFee}
-        isUnlimited={!!subscription}
-        sessionsLeft={totalSessionsLeft}
+        bookableServices={bookableServices}
       />
     </div>
   )

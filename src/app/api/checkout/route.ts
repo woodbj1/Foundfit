@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getStripe } from '@/lib/stripe'
+import { isDailyConfigured } from '@/lib/daily'
+import { isVirtualService, isVimeoLibraryService } from '@/lib/product-access'
 
 export async function POST(request: NextRequest) {
   const stripe = getStripe()
@@ -25,6 +27,26 @@ export async function POST(request: NextRequest) {
 
   if (!service) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
+  }
+
+  if (isVirtualService(service) && !isDailyConfigured()) {
+    return NextResponse.json(
+      {
+        error:
+          'This virtual service is not available right now because Daily is not configured yet.',
+      },
+      { status: 503 }
+    )
+  }
+
+  if (isVimeoLibraryService(service) && !service.access_url && !process.env.VIMEO_LIBRARY_URL) {
+    return NextResponse.json(
+      {
+        error:
+          'This digital library product is not available yet because no Vimeo access URL is configured.',
+      },
+      { status: 503 }
+    )
   }
 
   // Get or create Stripe customer
@@ -55,6 +77,9 @@ export async function POST(request: NextRequest) {
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const successPath = service.fulfillment_type === 'vimeo'
+    ? '/library?checkout=success'
+    : '/dashboard?checkout=success'
 
   if (service.type === 'unlimited') {
     // Create Stripe Price if needed, then subscription checkout
@@ -83,17 +108,19 @@ export async function POST(request: NextRequest) {
       customer: customerId,
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${appUrl}/dashboard?checkout=success`,
+      success_url: `${appUrl}${successPath}`,
       cancel_url: `${appUrl}/account?checkout=cancelled`,
       metadata: {
         supabase_user_id: user.id,
         service_id: service.id,
         service_type: service.type,
+        fulfillment_type: service.fulfillment_type || 'booking',
       },
       subscription_data: {
         metadata: {
           supabase_user_id: user.id,
           service_id: service.id,
+          fulfillment_type: service.fulfillment_type || 'booking',
         },
       },
     })
@@ -117,12 +144,13 @@ export async function POST(request: NextRequest) {
           quantity: 1,
         },
       ],
-      success_url: `${appUrl}/dashboard?checkout=success`,
+      success_url: `${appUrl}${successPath}`,
       cancel_url: `${appUrl}/account?checkout=cancelled`,
       metadata: {
         supabase_user_id: user.id,
         service_id: service.id,
         service_type: service.type,
+        fulfillment_type: service.fulfillment_type || 'booking',
         session_count: service.session_count?.toString() || '1',
       },
     })

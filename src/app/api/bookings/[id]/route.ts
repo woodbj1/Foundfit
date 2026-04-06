@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createCalendarEvent, deleteCalendarEvent } from '@/lib/google-calendar'
+import { createTrainerCalendarEvent, deleteTrainerCalendarEvent } from '@/lib/google-calendar'
 import { sendEmail, bookingApprovedEmail, bookingDeclinedEmail, bookingCancelledEmail } from '@/lib/email'
 import { format } from 'date-fns'
+import { createDailyRoomForBooking, isDailyConfigured } from '@/lib/daily'
+import { isVirtualService } from '@/lib/product-access'
 
 // PATCH — approve or decline a booking (trainer/admin)
 export async function PATCH(
@@ -36,7 +38,7 @@ export async function PATCH(
   // Get booking
   const { data: booking } = await supabase
     .from('bookings')
-    .select('*, client:profiles!bookings_client_id_fkey(*)')
+    .select('*, client:profiles!bookings_client_id_fkey(*), service:services(*)')
     .eq('id', id)
     .single()
 
@@ -56,18 +58,55 @@ export async function PATCH(
   }
 
   // Update booking status
-  const updateData: any = { status }
+  const updateData: {
+    status: 'approved' | 'declined'
+    daily_room_name?: string
+    daily_room_url?: string
+    google_calendar_event_id?: string
+  } = { status }
+  const isVirtualBooking = isVirtualService(booking.service)
 
   // If approving, add to Google Calendar
   if (status === 'approved') {
+    if (isVirtualBooking && !booking.daily_room_url) {
+      if (!isDailyConfigured()) {
+        return NextResponse.json(
+          { error: 'Daily is not configured for virtual sessions.' },
+          { status: 503 }
+        )
+      }
+
+      try {
+        const room = await createDailyRoomForBooking(booking.id)
+        updateData.daily_room_name = room.name
+        updateData.daily_room_url = room.url
+      } catch (dailyError) {
+        console.error('Failed to create Daily room:', dailyError)
+        return NextResponse.json(
+          { error: 'Could not create the Daily meeting room for this booking.' },
+          { status: 502 }
+        )
+      }
+    }
+
     if (!booking.google_calendar_event_id) {
       try {
-        const eventId = await createCalendarEvent(
-          `Training: ${booking.client?.full_name || 'Client'}`,
-          `FoundFit session with ${booking.client?.full_name}${booking.notes ? '\nNotes: ' + booking.notes : ''}`,
+        const eventId = await createTrainerCalendarEvent(
+          booking.trainer_id,
+          `${booking.service?.name || 'Training'}: ${booking.client?.full_name || 'Client'}`,
+          buildBookingCalendarDescription({
+            clientName: booking.client?.full_name || 'Client',
+            serviceName: booking.service?.name || 'Training Session',
+            notes: booking.notes,
+            dailyRoomUrl: updateData.daily_room_url || booking.daily_room_url,
+          }),
           booking.start_time,
           booking.end_time,
-          booking.location_type === 'travel' ? booking.travel_address || undefined : undefined
+          booking.location_type === 'virtual'
+            ? 'Virtual session via Daily'
+            : booking.location_type === 'travel'
+              ? booking.travel_address || undefined
+              : undefined
         )
         if (eventId) {
           updateData.google_calendar_event_id = eventId
@@ -84,16 +123,19 @@ export async function PATCH(
         .select('id')
         .eq('client_id', booking.client_id)
         .eq('status', 'active')
-        .single()
+        .eq('service_id', booking.service_id)
+        .limit(1)
+        .maybeSingle()
 
       if (!subscription) {
         const { data: packs } = await supabase
           .from('session_packs')
           .select('*')
           .eq('client_id', booking.client_id)
+          .eq('service_id', booking.service_id)
           .order('purchased_at', { ascending: true })
 
-        const activePack = packs?.find((p: any) => p.used_sessions < p.total_sessions)
+        const activePack = packs?.find((p) => p.used_sessions < p.total_sessions)
         if (activePack) {
           await supabase
             .from('session_packs')
@@ -121,7 +163,12 @@ export async function PATCH(
       const timeStr = format(startDate, 'h:mm a')
 
       const emailData = status === 'approved'
-        ? bookingApprovedEmail(booking.client.full_name || 'there', dateStr, timeStr)
+        ? bookingApprovedEmail(
+            booking.client.full_name || 'there',
+            dateStr,
+            timeStr,
+            updateData.daily_room_url || booking.daily_room_url || undefined
+          )
         : bookingDeclinedEmail(booking.client.full_name || 'there', dateStr, timeStr)
 
       await sendEmail({ to: booking.client.email, ...emailData })
@@ -146,7 +193,7 @@ export async function DELETE(
   // Get booking
   const { data: booking } = await supabase
     .from('bookings')
-    .select('*, client:profiles!bookings_client_id_fkey(*), trainer:trainers(*, profile:profiles!trainers_user_id_fkey(*))')
+    .select('*, client:profiles!bookings_client_id_fkey(*), trainer:trainers(*, profile:profiles!trainers_user_id_fkey(*)), service:services(*)')
     .eq('id', id)
     .single()
 
@@ -175,7 +222,7 @@ export async function DELETE(
   // Remove from Google Calendar
   if (booking.google_calendar_event_id) {
     try {
-      await deleteCalendarEvent(booking.google_calendar_event_id)
+      await deleteTrainerCalendarEvent(booking.trainer_id, booking.google_calendar_event_id)
     } catch (error) {
       console.error('Failed to delete calendar event:', error)
     }
@@ -188,13 +235,16 @@ export async function DELETE(
       .select('id')
       .eq('client_id', booking.client_id)
       .eq('status', 'active')
-      .single()
+      .eq('service_id', booking.service_id)
+      .limit(1)
+      .maybeSingle()
 
     if (!subscription) {
       const { data: packs } = await supabase
         .from('session_packs')
         .select('*')
         .eq('client_id', booking.client_id)
+        .eq('service_id', booking.service_id)
         .gt('used_sessions', 0)
         .order('purchased_at', { ascending: false })
         .limit(1)
@@ -226,4 +276,28 @@ export async function DELETE(
   }
 
   return NextResponse.json({ success: true })
+}
+
+function buildBookingCalendarDescription({
+  clientName,
+  serviceName,
+  notes,
+  dailyRoomUrl,
+}: {
+  clientName: string
+  serviceName: string
+  notes?: string | null
+  dailyRoomUrl?: string | null
+}) {
+  const parts = [`FoundFit ${serviceName} with ${clientName}`]
+
+  if (notes) {
+    parts.push(`Notes: ${notes}`)
+  }
+
+  if (dailyRoomUrl) {
+    parts.push(`Daily join link: ${dailyRoomUrl}`)
+  }
+
+  return parts.join('\n')
 }

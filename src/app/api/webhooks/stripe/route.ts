@@ -1,24 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
-import { stripe } from '@/lib/stripe'
+import { formatPrice, getStripe } from '@/lib/stripe'
 import { createAdminClient } from '@/lib/supabase/server'
 import { sendEmail, paymentConfirmationEmail } from '@/lib/email'
-import { formatPrice } from '@/lib/stripe'
+import type { SubscriptionStatus } from '@/lib/types'
+
+function getSubscriptionPeriod(subscription: Stripe.Subscription) {
+  const item = subscription.items.data[0]
+  const periodStart = item?.current_period_start ?? subscription.start_date ?? subscription.created
+  const periodEnd =
+    item?.current_period_end
+    ?? subscription.cancel_at
+    ?? subscription.ended_at
+    ?? periodStart
+
+  return {
+    currentPeriodStart: new Date(periodStart * 1000).toISOString(),
+    currentPeriodEnd: new Date(periodEnd * 1000).toISOString(),
+  }
+}
+
+function mapStripeSubscriptionStatus(status: Stripe.Subscription.Status): SubscriptionStatus {
+  switch (status) {
+    case 'active':
+    case 'trialing':
+      return 'active'
+    case 'past_due':
+    case 'unpaid':
+    case 'incomplete':
+      return 'past_due'
+    case 'canceled':
+      return 'cancelled'
+    case 'incomplete_expired':
+    case 'paused':
+      return 'expired'
+    default:
+      return 'active'
+  }
+}
 
 export async function POST(request: NextRequest) {
+  const stripe = getStripe()
   const body = await request.text()
-  const signature = request.headers.get('stripe-signature')!
+  const signature = request.headers.get('stripe-signature')
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+
+  if (!signature) {
+    return NextResponse.json({ error: 'Missing Stripe signature' }, { status: 400 })
+  }
+
+  if (!webhookSecret) {
+    return NextResponse.json({ error: 'Stripe webhook is not configured' }, { status: 500 })
+  }
 
   let event: Stripe.Event
-
   try {
     event = stripe.webhooks.constructEvent(
       body,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET!
+      webhookSecret
     )
-  } catch (err: any) {
-    console.error('Stripe webhook signature verification failed:', err.message)
+  } catch (error: unknown) {
+    console.error(
+      'Stripe webhook signature verification failed:',
+      error instanceof Error ? error.message : error
+    )
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
 
@@ -35,38 +81,73 @@ export async function POST(request: NextRequest) {
         if (!userId || !serviceId) break
 
         if (serviceType === 'unlimited') {
-          // Create subscription record
           const subscriptionId = session.subscription as string
-          const sub = await stripe.subscriptions.retrieve(subscriptionId) as Stripe.Subscription
+          const sub = (await stripe.subscriptions.retrieve(subscriptionId)) as Stripe.Subscription
+          const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriod(sub)
+          const status = mapStripeSubscriptionStatus(sub.status)
 
-          // Stripe SDK v21+: current_period_start/end removed from Subscription.
-          // Use start_date + 30 days as a reasonable period estimate.
-          const periodStart = new Date((sub.start_date || sub.created) * 1000)
-          const periodEnd = new Date(periodStart)
-          periodEnd.setMonth(periodEnd.getMonth() + 1)
+          const { data: existingSubscription } = await supabase
+            .from('subscriptions')
+            .select('id')
+            .eq('stripe_subscription_id', subscriptionId)
+            .maybeSingle()
 
-          await supabase.from('subscriptions').insert({
+          const subscriptionPayload = {
             client_id: userId,
             service_id: serviceId,
             stripe_subscription_id: subscriptionId,
-            status: 'active',
-            current_period_start: periodStart.toISOString(),
-            current_period_end: periodEnd.toISOString(),
-            auto_renew: true,
-          })
+            status,
+            current_period_start: currentPeriodStart,
+            current_period_end: currentPeriodEnd,
+            auto_renew: !sub.cancel_at_period_end,
+          }
+
+          if (existingSubscription?.id) {
+            await supabase
+              .from('subscriptions')
+              .update(subscriptionPayload)
+              .eq('id', existingSubscription.id)
+              .throwOnError()
+          } else {
+            await supabase
+              .from('subscriptions')
+              .insert(subscriptionPayload)
+              .throwOnError()
+          }
         } else if (serviceType === 'pack' || serviceType === 'single') {
-          // Create session pack record
           const sessionCount = parseInt(session.metadata?.session_count || '1')
-          await supabase.from('session_packs').insert({
+          const paymentIntentId = session.payment_intent as string | null
+
+          const { data: existingPack } = paymentIntentId
+            ? await supabase
+                .from('session_packs')
+                .select('id')
+                .eq('stripe_payment_id', paymentIntentId)
+                .maybeSingle()
+            : { data: null }
+
+          const sessionPackPayload = {
             client_id: userId,
             service_id: serviceId,
             total_sessions: sessionCount,
             used_sessions: 0,
-            stripe_payment_id: session.payment_intent as string,
-          })
+            stripe_payment_id: paymentIntentId,
+          }
+
+          if (existingPack?.id) {
+            await supabase
+              .from('session_packs')
+              .update(sessionPackPayload)
+              .eq('id', existingPack.id)
+              .throwOnError()
+          } else {
+            await supabase
+              .from('session_packs')
+              .insert(sessionPackPayload)
+              .throwOnError()
+          }
         }
 
-        // Send payment confirmation email
         const { data: profile } = await supabase
           .from('profiles')
           .select('email, full_name')
@@ -91,26 +172,25 @@ export async function POST(request: NextRequest) {
       }
 
       case 'invoice.payment_succeeded': {
-        // Subscription renewal
         const invoice = event.data.object as Stripe.Invoice
         const subscriptionId = (
           invoice.parent?.subscription_details?.subscription as string | undefined
         )
 
         if (subscriptionId) {
-          const sub = await stripe.subscriptions.retrieve(subscriptionId) as Stripe.Subscription
-          const renewStart = new Date((sub.start_date || sub.created) * 1000)
-          const renewEnd = new Date(renewStart)
-          renewEnd.setMonth(renewEnd.getMonth() + 1)
+          const sub = (await stripe.subscriptions.retrieve(subscriptionId)) as Stripe.Subscription
+          const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriod(sub)
 
           await supabase
             .from('subscriptions')
             .update({
-              status: 'active',
-              current_period_start: renewStart.toISOString(),
-              current_period_end: renewEnd.toISOString(),
+              status: mapStripeSubscriptionStatus(sub.status),
+              current_period_start: currentPeriodStart,
+              current_period_end: currentPeriodEnd,
+              auto_renew: !sub.cancel_at_period_end,
             })
             .eq('stripe_subscription_id', subscriptionId)
+            .throwOnError()
         }
         break
       }
@@ -125,35 +205,41 @@ export async function POST(request: NextRequest) {
             .from('subscriptions')
             .update({ status: 'past_due' })
             .eq('stripe_subscription_id', subscriptionId)
+            .throwOnError()
         }
         break
       }
 
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription
+        const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriod(subscription)
         await supabase
           .from('subscriptions')
-          .update({ status: 'cancelled' })
+          .update({
+            status: 'cancelled',
+            auto_renew: false,
+            current_period_start: currentPeriodStart,
+            current_period_end: currentPeriodEnd,
+          })
           .eq('stripe_subscription_id', subscription.id)
+          .throwOnError()
         break
       }
 
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription
-        const status = subscription.cancel_at_period_end ? 'active' : 'active'
-        const updatedStart = new Date((subscription.start_date || subscription.created) * 1000)
-        const updatedEnd = new Date(updatedStart)
-        updatedEnd.setMonth(updatedEnd.getMonth() + 1)
+        const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriod(subscription)
 
         await supabase
           .from('subscriptions')
           .update({
-            status,
+            status: mapStripeSubscriptionStatus(subscription.status),
             auto_renew: !subscription.cancel_at_period_end,
-            current_period_start: updatedStart.toISOString(),
-            current_period_end: updatedEnd.toISOString(),
+            current_period_start: currentPeriodStart,
+            current_period_end: currentPeriodEnd,
           })
           .eq('stripe_subscription_id', subscription.id)
+          .throwOnError()
         break
       }
     }

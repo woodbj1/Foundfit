@@ -26,15 +26,15 @@ type Trainer = {
   role: string
 }
 
-function generatePassword(length = 16): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%'
-  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+type AddTrainerResponse = {
+  createdUser?: boolean
+  emailedCredentials?: boolean
+  error?: string
 }
 
 export default function AdminDashboardPage() {
   const router = useRouter()
-  const supabase = createClient()
-
+  const [supabase] = useState(() => createClient())
   const [trainers, setTrainers] = useState<Trainer[]>([])
   const [loading, setLoading] = useState(true)
   const [isAdding, setIsAdding] = useState(false)
@@ -50,8 +50,8 @@ export default function AdminDashboardPage() {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      setTrainers(data || [])
-    } catch (err: any) {
+      setTrainers((data as Trainer[]) || [])
+    } catch {
       toast.error('Could not load trainers.')
     } finally {
       setLoading(false)
@@ -64,7 +64,7 @@ export default function AdminDashboardPage() {
         router.push('/login')
         return
       }
-      fetchTrainers()
+      void fetchTrainers()
     })
   }, [router, supabase, fetchTrainers])
 
@@ -72,37 +72,60 @@ export default function AdminDashboardPage() {
     e.preventDefault()
     setIsAdding(true)
 
-    const tempPassword = generatePassword()
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15000)
 
     try {
-      const { data, error } = await supabase.functions.invoke('create-user-admin', {
-        body: {
+      const res = await fetch('/api/admin/trainers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           email: newTrainer.email,
-          password: tempPassword,
           fullName: newTrainer.fullName,
-          role: 'trainer',
-        },
+        }),
+        signal: controller.signal,
       })
 
-      if (error) throw new Error(error.message || 'Failed to invoke creation function')
-      if (data && !data.success) throw new Error(data.error || 'Unknown server error')
+      const raw = await res.text()
+      let data: AddTrainerResponse | null = null
 
-      toast.success(`${newTrainer.fullName} added. Temporary password sent to their email.`)
+      try {
+        data = raw ? JSON.parse(raw) as AddTrainerResponse : null
+      } catch {
+        data = { error: raw || 'Unexpected server response' }
+      }
+
+      if (!res.ok) throw new Error(data?.error || 'Failed to create trainer account')
+
+      const message = data?.createdUser
+        ? `${newTrainer.fullName} added.${data?.emailedCredentials ? ' Login details were emailed.' : ' Account created, but email delivery is not configured.'}`
+        : `${newTrainer.fullName} promoted to trainer and activated.`
+
+      toast.success(message)
       setNewTrainer({ email: '', fullName: '' })
       await fetchTrainers()
-    } catch (err: any) {
+    } catch (error: unknown) {
       let msg = 'Could not create trainer account.'
-      if (err.message?.includes('already registered')) msg = 'This email is already registered.'
-      else if (err.message) msg = err.message
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        msg = 'Trainer creation timed out. The server route may be hanging.'
+      } else if (error instanceof Error && error.message.includes('already registered')) {
+        msg = 'This email is already registered.'
+      } else if (error instanceof Error && error.message) {
+        msg = error.message
+      }
+
       toast.error(msg)
+      console.error('Add trainer failed:', error)
     } finally {
+      clearTimeout(timeout)
       setIsAdding(false)
     }
   }
 
   if (loading && trainers.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="flex min-h-[60vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
       </div>
     )
@@ -110,8 +133,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Shield className="h-6 w-6 text-purple-600" />
           <h1 className="text-xl font-bold text-gray-800">Admin Dashboard</h1>
@@ -124,72 +146,75 @@ export default function AdminDashboardPage() {
           }}
           className="text-gray-600"
         >
-          <LogOut className="h-4 w-4 mr-2" /> Logout
+          <LogOut className="mr-2 h-4 w-4" />
+          Logout
         </Button>
       </div>
 
       <Tabs defaultValue="trainers" className="space-y-6">
-        <TabsList className="bg-white p-1 rounded-xl shadow-sm border border-gray-100 w-full sm:w-auto flex overflow-x-auto">
+        <TabsList className="flex w-full overflow-x-auto rounded-xl border border-gray-100 bg-white p-1 shadow-sm sm:w-auto">
           <TabsTrigger
             value="trainers"
-            className="px-6 py-2.5 rounded-lg data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700 font-medium transition-all"
+            className="rounded-lg px-6 py-2.5 font-medium transition-all data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700"
           >
             Manage Trainers
           </TabsTrigger>
           <TabsTrigger
             value="services"
-            className="px-6 py-2.5 rounded-lg data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700 font-medium transition-all"
+            className="rounded-lg px-6 py-2.5 font-medium transition-all data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700"
           >
             Services &amp; Pricing
           </TabsTrigger>
           <TabsTrigger
             value="integrations"
-            className="px-6 py-2.5 rounded-lg data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700 font-medium transition-all flex items-center gap-2"
+            className="flex items-center gap-2 rounded-lg px-6 py-2.5 font-medium transition-all data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700"
           >
-            <Puzzle className="h-4 w-4" /> Integrations
+            <Puzzle className="h-4 w-4" />
+            Integrations
           </TabsTrigger>
         </TabsList>
 
-        {/* Tab 1: Manage Trainers */}
         <TabsContent value="trainers" className="focus-visible:outline-none">
-          <div className="grid md:grid-cols-3 gap-8">
-            {/* Add New Trainer Form */}
+          <div className="grid gap-8 md:grid-cols-3">
             <div className="md:col-span-1">
-              <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 sticky top-24">
-                <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <div className="sticky top-24 rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+                <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-gray-800">
                   <UserPlus className="h-5 w-5 text-purple-600" />
                   Add New Trainer
                 </h2>
                 <form onSubmit={handleAddTrainer} className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Full Name</label>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Full Name</label>
                     <Input
                       value={newTrainer.fullName}
-                      onChange={(e) => setNewTrainer((p) => ({ ...p, fullName: e.target.value }))}
+                      onChange={(e) => setNewTrainer((prev) => ({ ...prev, fullName: e.target.value }))}
                       placeholder="e.g. Sarah Smith"
                       required
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-700 block mb-1">Email Address</label>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Email Address</label>
                     <Input
                       type="email"
                       value={newTrainer.email}
-                      onChange={(e) => setNewTrainer((p) => ({ ...p, email: e.target.value }))}
+                      onChange={(e) => setNewTrainer((prev) => ({ ...prev, email: e.target.value }))}
                       placeholder="trainer@example.com"
                       required
                     />
                   </div>
                   <p className="text-xs text-gray-500">
-                    A secure temporary password will be auto-generated and sent to the trainer&apos;s email.
+                    New users get emailed a temporary password. Existing users are upgraded in place.
                   </p>
                   <Button
                     type="submit"
-                    className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                    className="w-full bg-purple-600 text-white hover:bg-purple-700"
                     disabled={isAdding}
                   >
                     {isAdding ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
                     ) : (
                       'Create Trainer Account'
                     )}
@@ -198,17 +223,17 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* Current Trainers List */}
             <div className="md:col-span-2">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                  <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+              <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+                <div className="flex items-center justify-between border-b border-gray-100 p-6">
+                  <h2 className="flex items-center gap-2 text-lg font-bold text-gray-800">
                     <Users className="h-5 w-5 text-purple-600" />
                     Current Trainers
                   </h2>
                   <div className="flex items-center gap-3">
                     <Button variant="outline" size="sm" onClick={fetchTrainers} disabled={loading}>
-                      <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh
+                      <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                      Refresh
                     </Button>
                     <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">
                       {trainers.length} Active
@@ -224,10 +249,10 @@ export default function AdminDashboardPage() {
                     {trainers.map((trainer) => (
                       <div
                         key={trainer.id}
-                        className="p-6 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                        className="flex items-center justify-between p-6 transition-colors hover:bg-gray-50"
                       >
                         <div className="flex items-center gap-4">
-                          <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100 font-bold text-purple-600">
                             {trainer.full_name?.charAt(0) || 'T'}
                           </div>
                           <div>
@@ -235,7 +260,7 @@ export default function AdminDashboardPage() {
                             <p className="text-sm text-gray-500">{trainer.email}</p>
                           </div>
                         </div>
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium border border-green-200">
+                        <span className="rounded-full border border-green-200 bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
                           Trainer
                         </span>
                       </div>
@@ -247,16 +272,14 @@ export default function AdminDashboardPage() {
           </div>
         </TabsContent>
 
-        {/* Tab 2: Services & Pricing */}
         <TabsContent value="services" className="focus-visible:outline-none">
           <ServiceManagement />
         </TabsContent>
 
-        {/* Tab 3: Integrations */}
         <TabsContent value="integrations" className="focus-visible:outline-none">
-          <div className="opacity-60 pointer-events-none grayscale max-w-sm">
-            <div className="bg-white rounded-lg border border-dashed border-gray-300 p-10 flex flex-col items-center justify-center text-center space-y-4">
-              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
+          <div className="pointer-events-none max-w-sm grayscale opacity-60">
+            <div className="flex flex-col items-center justify-center space-y-4 rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
                 <Puzzle className="h-6 w-6 text-gray-400" />
               </div>
               <div>

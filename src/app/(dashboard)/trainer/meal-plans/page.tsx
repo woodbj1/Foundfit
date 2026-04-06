@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,47 +12,71 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
 
+interface TrainerMealPlan {
+  id: string
+  title: string
+  created_at: string
+  client?: {
+    full_name: string | null
+    email: string
+  } | null
+}
+
+interface ClientOption {
+  id: string
+  full_name: string | null
+  email: string
+}
+
 export default function TrainerMealPlansPage() {
-  const [mealPlans, setMealPlans] = useState<any[]>([])
-  const [clients, setClients] = useState<any[]>([])
+  const [mealPlans, setMealPlans] = useState<TrainerMealPlan[]>([])
+  const [clients, setClients] = useState<ClientOption[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [selectedClient, setSelectedClient] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
   const supabase = createClient()
 
   useEffect(() => {
-    loadData()
-  }, [])
+    async function loadData() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-  async function loadData() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+      if (!user) return
 
-    const { data: trainer } = await supabase
-      .from('trainers')
-      .select('id')
-      .eq('user_id', user.id)
-      .single()
+      const { data: trainer } = await supabase
+        .from('trainers')
+        .select('id')
+        .eq('user_id', user.id)
+        .single()
 
-    if (!trainer) {
-      setMealPlans([])
-      setClients([])
+      if (!trainer) {
+        setMealPlans([])
+        setClients([])
+        setLoading(false)
+        return
+      }
+
+      const [plansRes, clientsRes] = await Promise.all([
+        supabase
+          .from('meal_plans')
+          .select('*, client:profiles!meal_plans_client_id_fkey(*)')
+          .eq('trainer_id', trainer.id)
+          .order('created_at', { ascending: false }),
+        supabase.from('profiles').select('*').eq('role', 'client').order('full_name'),
+      ])
+
+      if (plansRes.data) setMealPlans(plansRes.data as TrainerMealPlan[])
+      if (clientsRes.data) setClients(clientsRes.data as ClientOption[])
       setLoading(false)
-      return
     }
 
-    const [plansRes, clientsRes] = await Promise.all([
-      supabase.from('meal_plans').select('*, client:profiles!meal_plans_client_id_fkey(*)').eq('trainer_id', trainer.id).order('created_at', { ascending: false }),
-      supabase.from('profiles').select('*').eq('role', 'client').order('full_name'),
-    ])
-
-    if (plansRes.data) setMealPlans(plansRes.data)
-    if (clientsRes.data) setClients(clientsRes.data)
-    setLoading(false)
-  }
+    void loadData()
+  }, [refreshKey, supabase])
 
   async function handleUpload() {
     if (!title || !selectedClient || !file) {
@@ -61,8 +85,12 @@ export default function TrainerMealPlansPage() {
     }
 
     setUploading(true)
+
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
       if (!user) return
 
       const { data: trainer } = await supabase
@@ -77,9 +105,8 @@ export default function TrainerMealPlansPage() {
         return
       }
 
-      // Upload file to Supabase storage
       const fileName = `${selectedClient}/${Date.now()}-${file.name}`
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('meal-plans')
         .upload(fileName, file)
 
@@ -89,15 +116,16 @@ export default function TrainerMealPlansPage() {
         return
       }
 
-      const { data: { publicUrl } } = supabase.storage.from('meal-plans').getPublicUrl(fileName)
-
-      // Create meal plan record
-      const { error } = await supabase.from('meal_plans').insert({
-        client_id: selectedClient,
-        trainer_id: trainer.id,
-        title,
-        file_url: publicUrl,
-      })
+      const { data: mealPlan, error } = await supabase
+        .from('meal_plans')
+        .insert({
+          client_id: selectedClient,
+          trainer_id: trainer.id,
+          title,
+          file_url: fileName,
+        })
+        .select('id')
+        .single()
 
       if (error) {
         toast.error('Failed to save meal plan')
@@ -107,22 +135,20 @@ export default function TrainerMealPlansPage() {
         setTitle('')
         setSelectedClient('')
         setFile(null)
-        loadData()
+        setRefreshKey((current) => current + 1)
 
-        // Send notification email
         await fetch('/api/meal-plans', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            client_id: selectedClient,
-            title,
-            file_url: publicUrl,
+            meal_plan_id: mealPlan.id,
           }),
         })
       }
     } catch {
       toast.error('Something went wrong')
     }
+
     setUploading(false)
   }
 
@@ -143,8 +169,8 @@ export default function TrainerMealPlansPage() {
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90">
-              <Plus className="h-4 w-4" />
-              Upload Plan
+            <Plus className="h-4 w-4" />
+            Upload Plan
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
@@ -154,14 +180,14 @@ export default function TrainerMealPlansPage() {
             <div className="space-y-4 mt-4">
               <div className="space-y-2">
                 <Label>Client</Label>
-                <Select value={selectedClient} onValueChange={(v) => setSelectedClient(v ?? '')}>
+                <Select value={selectedClient} onValueChange={(value) => setSelectedClient(value ?? '')}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select a client" />
                   </SelectTrigger>
                   <SelectContent>
-                    {clients.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.full_name || c.email}
+                    {clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.full_name || client.email}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -203,11 +229,11 @@ export default function TrainerMealPlansPage() {
                 <div>
                   <p className="font-medium">{plan.title}</p>
                   <p className="text-sm text-muted-foreground">
-                    {plan.client?.full_name} · {format(new Date(plan.created_at), 'MMM d, yyyy')}
+                    {(plan.client?.full_name || plan.client?.email || 'Client')} - {format(new Date(plan.created_at), 'MMM d, yyyy')}
                   </p>
                 </div>
               </div>
-              <a href={plan.file_url} target="_blank" rel="noopener noreferrer">
+              <a href={`/api/meal-plans/${plan.id}/download`} target="_blank" rel="noopener noreferrer">
                 <Button variant="ghost" size="sm" className="gap-1">
                   <Download className="h-4 w-4" />
                   PDF

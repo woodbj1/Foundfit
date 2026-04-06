@@ -1,9 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Loader2, Plus, Trash2, Clock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -11,12 +10,16 @@ import { toast } from 'sonner'
 import { DAYS_OF_WEEK, TIME_SLOTS } from '@/lib/constants'
 import type { AvailabilityBlock, DayOfWeek } from '@/lib/types'
 
+type TrainerIdRow = {
+  id: string
+}
+
 export default function AvailabilityPage() {
+  const [supabase] = useState(() => createClient())
   const [blocks, setBlocks] = useState<AvailabilityBlock[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [trainerId, setTrainerId] = useState<string | null>(null)
-  const supabase = createClient()
 
   useEffect(() => {
     async function load() {
@@ -29,12 +32,14 @@ export default function AvailabilityPage() {
         .eq('user_id', user.id)
         .single()
 
-      if (trainer) {
-        setTrainerId(trainer.id)
+      const trainerRow = trainer as TrainerIdRow | null
+
+      if (trainerRow) {
+        setTrainerId(trainerRow.id)
         const { data } = await supabase
           .from('availability_blocks')
           .select('*')
-          .eq('trainer_id', trainer.id)
+          .eq('trainer_id', trainerRow.id)
           .order('day_of_week')
           .order('start_time')
 
@@ -42,13 +47,16 @@ export default function AvailabilityPage() {
       }
       setLoading(false)
     }
-    load()
-  }, [])
+
+    void load()
+  }, [supabase])
 
   function addBlock() {
+    if (!trainerId) return
+
     const newBlock: AvailabilityBlock = {
       id: `temp-${Date.now()}`,
-      trainer_id: trainerId!,
+      trainer_id: trainerId,
       day_of_week: 1 as DayOfWeek,
       start_time: '06:00',
       end_time: '12:00',
@@ -57,27 +65,30 @@ export default function AvailabilityPage() {
   }
 
   function removeBlock(id: string) {
-    setBlocks(blocks.filter(b => b.id !== id))
+    setBlocks(blocks.filter((block) => block.id !== id))
   }
 
-  function updateBlock(id: string, field: keyof AvailabilityBlock, value: any) {
-    setBlocks(blocks.map(b => b.id === id ? { ...b, [field]: value } : b))
+  function updateBlock<K extends keyof AvailabilityBlock>(
+    id: string,
+    field: K,
+    value: AvailabilityBlock[K]
+  ) {
+    setBlocks(blocks.map((block) => (block.id === id ? { ...block, [field]: value } : block)))
   }
 
   async function handleSave() {
     if (!trainerId) return
     setSaving(true)
 
-    // Delete all existing blocks and re-insert
     await supabase.from('availability_blocks').delete().eq('trainer_id', trainerId)
 
     if (blocks.length > 0) {
       const { error } = await supabase.from('availability_blocks').insert(
-        blocks.map(b => ({
+        blocks.map((block) => ({
           trainer_id: trainerId,
-          day_of_week: b.day_of_week,
-          start_time: b.start_time,
-          end_time: b.end_time,
+          day_of_week: block.day_of_week,
+          start_time: block.start_time,
+          end_time: block.end_time,
         }))
       )
 
@@ -91,7 +102,6 @@ export default function AvailabilityPage() {
     toast.success('Availability saved!')
     setSaving(false)
 
-    // Reload to get real IDs
     const { data } = await supabase
       .from('availability_blocks')
       .select('*')
@@ -109,11 +119,10 @@ export default function AvailabilityPage() {
     )
   }
 
-  // Group blocks by day
-  const blocksByDay = DAYS_OF_WEEK.map((day, i) => ({
+  const blocksByDay = DAYS_OF_WEEK.map((day, index) => ({
     day,
-    dayIndex: i,
-    blocks: blocks.filter(b => b.day_of_week === i),
+    dayIndex: index,
+    blocks: blocks.filter((block) => block.day_of_week === index),
   }))
 
   return (
@@ -121,15 +130,15 @@ export default function AvailabilityPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Availability</h1>
-          <p className="text-muted-foreground mt-1">Set your available hours for each day</p>
+          <p className="mt-1 text-muted-foreground">Set your available hours for each day</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={addBlock}>
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="mr-2 h-4 w-4" />
             Add Block
           </Button>
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Save Changes
           </Button>
         </div>
@@ -139,7 +148,7 @@ export default function AvailabilityPage() {
         {blocksByDay.map(({ day, dayIndex, blocks: dayBlocks }) => (
           <Card key={dayIndex} className={dayBlocks.length === 0 ? 'opacity-50' : ''}>
             <CardHeader className="py-4">
-              <CardTitle className="text-base flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-base">
                 <Clock className="h-4 w-4" />
                 {day}
                 {dayBlocks.length > 0 && (
@@ -156,7 +165,9 @@ export default function AvailabilityPage() {
                     <div key={block.id} className="flex items-center gap-3">
                       <Select
                         value={block.start_time}
-                        onValueChange={(v) => v && updateBlock(block.id, 'start_time', v)}
+                        onValueChange={(value) => {
+                          if (value) updateBlock(block.id, 'start_time', value)
+                        }}
                       >
                         <SelectTrigger className="w-36">
                           <SelectValue />
@@ -172,7 +183,9 @@ export default function AvailabilityPage() {
                       <span className="text-muted-foreground">to</span>
                       <Select
                         value={block.end_time}
-                        onValueChange={(v) => v && updateBlock(block.id, 'end_time', v)}
+                        onValueChange={(value) => {
+                          if (value) updateBlock(block.id, 'end_time', value)
+                        }}
                       >
                         <SelectTrigger className="w-36">
                           <SelectValue />

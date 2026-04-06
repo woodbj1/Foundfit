@@ -1,0 +1,2 @@
+-- Optional local seed file for Supabase CLI.
+-- Keep intentionally minimal so `supabase db reset` works on a fresh project.

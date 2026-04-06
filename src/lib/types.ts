@@ -5,9 +5,11 @@
 export type UserRole = 'client' | 'trainer' | 'admin'
 export type ServiceType = 'unlimited' | 'pack' | 'single' | 'meal_plan'
 export type BookingStatus = 'pending' | 'approved' | 'declined' | 'cancelled' | 'completed'
-export type LocationType = 'gym' | 'travel'
+export type LocationType = 'gym' | 'travel' | 'virtual'
 export type SubscriptionStatus = 'active' | 'past_due' | 'cancelled' | 'expired'
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6
+export type BookingPreference = 'request_system' | 'instant_confirmation'
+export type FulfillmentType = 'booking' | 'daily' | 'vimeo' | 'hybrid'
 
 export interface Profile {
   id: string
@@ -17,6 +19,8 @@ export interface Profile {
   address: string | null
   role: UserRole
   avatar_url: string | null
+  timezone?: string
+  booking_preference?: BookingPreference
   created_at: string
   updated_at: string
 }
@@ -24,13 +28,22 @@ export interface Profile {
 export interface Service {
   id: string
   name: string
+  title?: string | null
   description: string | null
+  category?: string | null
   type: ServiceType
   price: number // in cents
   session_count: number | null // null for unlimited
+  session_limit?: number | null
   duration_minutes: number
   max_weekly_bookings: number
   is_active: boolean
+  is_popular?: boolean
+  is_session?: boolean
+  fulfillment_type?: FulfillmentType
+  access_url?: string | null
+  stripe_product_id?: string | null
+  stripe_price_id?: string | null
   created_at: string
   updated_at: string
 }
@@ -40,8 +53,20 @@ export interface Trainer {
   user_id: string
   bio: string | null
   is_active: boolean
+  password_updated_at?: string | null
+  google_calendar_connected_at?: string | null
+  google_calendar_email?: string | null
+  onboarding_completed_at?: string | null
   created_at: string
   profile?: Profile
+}
+
+export interface TrainerCalendarConnection {
+  trainer_id: string
+  google_refresh_token: string
+  google_calendar_id: string
+  created_at: string
+  updated_at: string
 }
 
 export interface AvailabilityBlock {
@@ -88,6 +113,8 @@ export interface Booking {
   location_type: LocationType
   travel_address: string | null
   google_calendar_event_id: string | null
+  daily_room_name?: string | null
+  daily_room_url?: string | null
   notes: string | null
   created_at: string
   updated_at: string
@@ -101,10 +128,10 @@ export interface MealPlan {
   client_id: string
   trainer_id: string
   title: string
-  file_url: string
+  file_url: string // stored Supabase Storage path for the meal plan PDF
   created_at: string
   client?: Profile
-  trainer?: Profile
+  trainer?: Trainer
 }
 
 export interface AppSettings {

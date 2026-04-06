@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { getCalendarBusySlots } from '@/lib/google-calendar'
-import { addMinutes, format, parse, setHours, setMinutes, isAfter, isBefore, areIntervalsOverlapping } from 'date-fns'
+import { getTrainerCalendarBusySlots } from '@/lib/google-calendar'
+import { addMinutes, areIntervalsOverlapping } from 'date-fns'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const dateStr = searchParams.get('date')
   const trainerId = searchParams.get('trainer_id')
+  const serviceId = searchParams.get('service_id')
 
   if (!dateStr) {
     return NextResponse.json({ error: 'date is required' }, { status: 400 })
@@ -27,7 +28,20 @@ export async function GET(request: NextRequest) {
     .select('value')
     .eq('key', 'default_duration')
     .single()
-  const duration = parseInt(durationSetting?.value || '50')
+  let duration = parseInt(durationSetting?.value || '50')
+
+  if (serviceId) {
+    const { data: service } = await supabase
+      .from('services')
+      .select('duration_minutes')
+      .eq('id', serviceId)
+      .eq('is_active', true)
+      .single()
+
+    if (service?.duration_minutes) {
+      duration = service.duration_minutes
+    }
+  }
 
   // Find a trainer — if not specified, get the first active one
   let targetTrainerId = trainerId
@@ -36,12 +50,27 @@ export async function GET(request: NextRequest) {
       .from('trainers')
       .select('id')
       .eq('is_active', true)
+      .not('onboarding_completed_at', 'is', null)
       .limit(1)
       .single()
     if (!firstTrainer) {
       return NextResponse.json({ slots: [] })
     }
     targetTrainerId = firstTrainer.id
+  }
+
+  if (!targetTrainerId) {
+    return NextResponse.json({ slots: [] })
+  }
+
+  const { data: targetTrainer } = await supabase
+    .from('trainers')
+    .select('id, onboarding_completed_at')
+    .eq('id', targetTrainerId)
+    .maybeSingle()
+
+  if (!targetTrainer?.onboarding_completed_at) {
+    return NextResponse.json({ slots: [], trainer_id: targetTrainerId })
   }
 
   // Get availability blocks for this day
@@ -73,7 +102,7 @@ export async function GET(request: NextRequest) {
   // Get Google Calendar busy slots
   let gcalBusy: { start: string; end: string }[] = []
   try {
-    gcalBusy = await getCalendarBusySlots(date)
+    gcalBusy = await getTrainerCalendarBusySlots(date, targetTrainerId)
   } catch (error) {
     console.error('Google Calendar error (continuing without):', error)
   }

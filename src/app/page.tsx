@@ -1,7 +1,9 @@
+import Image from 'next/image'
 import Link from 'next/link'
 import {
   Dumbbell,
   Calendar,
+  Check,
   Clock,
   CreditCard,
   Trophy,
@@ -9,11 +11,11 @@ import {
   Heart,
   Users,
   User,
-  Utensils,
-  Zap,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Footer from '@/components/Footer'
+import { getPublicServiceCatalog, type PublicService } from '@/lib/public-catalog'
+import { SITE, formatPrice } from '@/lib/site-config'
 
 const features = [
   {
@@ -29,7 +31,7 @@ const features = [
   {
     icon: CreditCard,
     title: 'Flexible Payment',
-    description: 'Pay per session or subscribe for unlimited training',
+    description: 'Choose single sessions, packs, memberships, or add-on support',
   },
   {
     icon: Trophy,
@@ -38,18 +40,110 @@ const features = [
   },
 ]
 
-export default function HomePage() {
+function getServiceBadge(service: PublicService) {
+  if (service.is_popular) {
+    return 'Popular'
+  }
+
+  if (service.fulfillment_type === 'daily') {
+    return 'Live Virtual'
+  }
+
+  if (service.fulfillment_type === 'vimeo') {
+    return 'On Demand'
+  }
+
+  if (service.type === 'meal_plan') {
+    return 'Nutrition'
+  }
+
+  if (service.type === 'pack' && service.session_count) {
+    return `${service.session_count}-Pack`
+  }
+
+  return null
+}
+
+function getPriceSuffix(service: PublicService) {
+  if (service.type === 'unlimited' || service.type === 'meal_plan') {
+    return '/ month'
+  }
+
+  if (service.type === 'single' && service.is_session) {
+    return '/ session'
+  }
+
+  return 'one-time'
+}
+
+function getCtaLabel(service: PublicService) {
+  if (service.fulfillment_type === 'vimeo') {
+    return 'Unlock Access'
+  }
+
+  if (service.type === 'meal_plan') {
+    return 'Get Nutrition Plan'
+  }
+
+  if (service.type === 'unlimited') {
+    return 'Start Membership'
+  }
+
+  if (service.type === 'pack') {
+    return 'Choose Pack'
+  }
+
+  return 'Book Session'
+}
+
+function getHighlights(service: PublicService) {
+  const highlights: string[] = []
+
+  if (service.fulfillment_type === 'daily') {
+    highlights.push('Live coach-led session from anywhere')
+  } else if (service.fulfillment_type === 'vimeo') {
+    highlights.push('Instant access to your on-demand workout library')
+  } else if (service.type === 'meal_plan') {
+    highlights.push('Customized nutrition guidance tailored to your goals')
+  } else if (service.duration_minutes > 0) {
+    highlights.push(`${service.duration_minutes}-minute coaching sessions`)
+  }
+
+  if (service.type === 'unlimited' && service.max_weekly_bookings > 0) {
+    highlights.push(`Book up to ${service.max_weekly_bookings} sessions each week`)
+  } else if (service.type === 'pack' && service.session_count) {
+    highlights.push(`${service.session_count} sessions to use at your own pace`)
+  } else if (service.type === 'single') {
+    highlights.push('Flexible scheduling with no long-term commitment')
+  } else if (service.type === 'meal_plan') {
+    highlights.push('Updated monthly with practical grocery guidance')
+  }
+
+  if (service.fulfillment_type === 'vimeo') {
+    highlights.push('Perfect for workouts, mobility, and recovery days')
+  } else if (service.fulfillment_type === 'daily') {
+    highlights.push('Secure video delivery with built-in join links')
+  } else if (service.type === 'meal_plan') {
+    highlights.push('Trainer-created plan delivered through your client portal')
+  } else {
+    highlights.push('Built around your goals, schedule, and training level')
+  }
+
+  return highlights.slice(0, 3)
+}
+
+export default async function HomePage() {
+  const services = await getPublicServiceCatalog()
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-cyan-50 flex flex-col">
-
-      {/* Navigation */}
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link href="/" className="flex items-center gap-2">
               <Dumbbell className="h-8 w-8 text-purple-600" />
               <span className="text-2xl font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent">
-                Foundation Fitness
+                {SITE.name}
               </span>
             </Link>
             <div className="flex items-center gap-3">
@@ -75,15 +169,13 @@ export default function HomePage() {
       </nav>
 
       <main className="flex-grow">
-
-        {/* Hero Section */}
         <section className="relative overflow-hidden py-20 px-4">
           <div className="max-w-7xl mx-auto text-center">
             <h1 className="text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-pink-600 via-purple-600 to-cyan-600 bg-clip-text text-transparent">
               Transform Your Fitness Journey
             </h1>
             <p className="text-xl md:text-2xl text-gray-700 mb-8 max-w-3xl mx-auto">
-              Experience personalized training that adapts to your goals, schedule, and lifestyle
+              Experience personalized training that adapts to your goals, schedule, and lifestyle.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link href="/signup">
@@ -94,36 +186,39 @@ export default function HomePage() {
                   Book Your First Session
                 </Button>
               </Link>
-              <Button
-                size="lg"
-                variant="outline"
-                className="border-2 border-purple-500 text-purple-600 hover:bg-purple-50 text-lg px-8"
-              >
-                View Pricing
-              </Button>
+              <Link href="#pricing">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="border-2 border-purple-500 text-purple-600 hover:bg-purple-50 text-lg px-8"
+                >
+                  View Pricing
+                </Button>
+              </Link>
             </div>
           </div>
 
-          {/* Hero Image */}
           <div className="max-w-5xl mx-auto mt-16">
-            <img
+            <Image
               className="rounded-2xl shadow-2xl w-full"
               alt="Personal trainer working with client in modern gym"
               src="https://horizons-cdn.hostinger.com/5f5f3cbe-95f7-40cd-8ff1-013ae8dea373/woodbury_035-pAt2U.jpg"
+              width={1600}
+              height={900}
+              priority
             />
           </div>
         </section>
 
-        {/* Features Section */}
         <section className="py-20 px-4 bg-white/50 backdrop-blur-sm">
           <div className="max-w-7xl mx-auto">
             <h2 className="text-4xl font-bold text-center mb-12 bg-gradient-to-r from-pink-600 via-purple-600 to-cyan-600 bg-clip-text text-transparent">
-              Why Choose Foundation Fitness?
+              Why Train with {SITE.name}?
             </h2>
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-              {features.map((feature, index) => (
+              {features.map((feature) => (
                 <div
-                  key={index}
+                  key={feature.title}
                   className="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-shadow"
                 >
                   <div className="w-12 h-12 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-lg flex items-center justify-center mb-4">
@@ -137,25 +232,23 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Trainer Profile / About Section */}
         <section className="py-20 px-4 bg-gradient-to-br from-purple-50 to-pink-50 overflow-hidden">
           <div className="max-w-7xl mx-auto">
             <div className="grid md:grid-cols-2 gap-12 items-center">
-
-              {/* Image Column */}
               <div className="relative">
                 <div className="absolute -top-4 -left-4 w-72 h-72 bg-purple-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse" />
                 <div className="absolute -bottom-4 -right-4 w-72 h-72 bg-pink-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-pulse" />
                 <div className="relative rounded-2xl overflow-hidden shadow-2xl border-4 border-white rotate-2 hover:rotate-0 transition-transform duration-500">
-                  <img
+                  <Image
                     alt="Experienced female personal trainer smiling confidently in a gym environment"
                     className="w-full h-full object-cover"
                     src="https://horizons-cdn.hostinger.com/5f5f3cbe-95f7-40cd-8ff1-013ae8dea373/woodbury_150-tHUPT.jpg"
+                    width={1200}
+                    height={1500}
                   />
                 </div>
               </div>
 
-              {/* Content Column */}
               <div>
                 <div className="flex items-center gap-2 mb-4">
                   <span className="px-3 py-1 bg-pink-100 text-pink-700 rounded-full text-sm font-semibold flex items-center gap-1">
@@ -171,7 +264,7 @@ export default function HomePage() {
 
                 <div className="space-y-6 text-lg text-gray-700">
                   <p>
-                    Foundation Fitness is more than just a gym—it&apos;s a supportive community dedicated to
+                    {SITE.name} is more than just a training studio - it&apos;s a supportive community dedicated to
                     women&apos;s health and empowerment. We understand that every woman&apos;s body and journey is
                     unique, which is why we&apos;ve built a space where you can feel confident, supported, and strong.
                   </p>
@@ -182,10 +275,10 @@ export default function HomePage() {
                       Meet Your Trainer
                     </h3>
                     <p className="mb-4 text-gray-600">
-                      &ldquo;Hi, I&apos;m Caroline! With over 10 years of experience in women&apos;s specialized training,
-                      I focus on building strength, confidence, and sustainable lifestyle changes. My approach combines
-                      evidence-based training methods with nutritional guidance to help you feel your best inside and
-                      out—no crash diets, just real results.&rdquo;
+                      &ldquo;Hi, I&apos;m {SITE.trainerName}! With over 10 years of experience in women&apos;s specialized
+                      training, I focus on building strength, confidence, and sustainable lifestyle changes. My
+                      approach combines evidence-based training methods with nutritional guidance to help you feel your
+                      best inside and out - no crash diets, just real results.&rdquo;
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs font-medium border border-gray-200">Certified PT</span>
@@ -206,8 +299,8 @@ export default function HomePage() {
                       <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center mb-2">
                         <Users className="w-4 h-4 text-purple-600" />
                       </div>
-                      <h4 className="font-bold text-gray-900 mb-1">Group Sessions</h4>
-                      <p className="text-sm text-gray-600">Energetic small group training to keep you motivated and connected.</p>
+                      <h4 className="font-bold text-gray-900 mb-1">Small Group Energy</h4>
+                      <p className="text-sm text-gray-600">Accountability, encouragement, and coaching that still feels personal.</p>
                     </div>
                   </div>
                 </div>
@@ -216,183 +309,112 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Pricing Section */}
-        <section className="py-20 px-4">
+        <section id="pricing" className="py-20 px-4">
           <div className="max-w-7xl mx-auto">
-            <h2 className="text-4xl font-bold text-center mb-12 bg-gradient-to-r from-pink-600 via-purple-600 to-cyan-600 bg-clip-text text-transparent">
-              Flexible Pricing Options
-            </h2>
+            <div className="text-center mb-12">
+              <h2 className="text-4xl font-bold mb-4 bg-gradient-to-r from-pink-600 via-purple-600 to-cyan-600 bg-clip-text text-transparent">
+                Plans That Match Your Goals
+              </h2>
+              <p className="text-lg text-gray-600 max-w-3xl mx-auto">
+                Choose from in-person training, live virtual coaching, on-demand access, and nutrition support.
+              </p>
+            </div>
 
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {services.map((service) => {
+                const badge = getServiceBadge(service)
+                const highlights = getHighlights(service)
+                const isFeatured = service.is_popular
 
-              {/* Pay As You Go */}
-              <div className="bg-white rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-shadow">
-                <h3 className="text-2xl font-bold mb-4 text-gray-800">Pay As You Go</h3>
-                <div className="mb-6">
-                  <span className="text-5xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">$40</span>
-                  <span className="text-gray-600 ml-2">/ session</span>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  {['1-hour personal training session', 'Flexible scheduling', 'No commitment required'].map((item) => (
-                    <li key={item} className="flex items-center gap-2 text-gray-700">
-                      <div className="w-5 h-5 rounded-full bg-pink-500 flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-xs">✓</span>
+                return (
+                  <div
+                    key={service.title}
+                    className={
+                      isFeatured
+                        ? 'bg-gradient-to-br from-purple-600 to-cyan-600 rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-shadow text-white relative overflow-hidden'
+                        : 'bg-white rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-shadow relative'
+                    }
+                  >
+                    {badge ? (
+                      <div
+                        className={
+                          isFeatured
+                            ? 'absolute top-4 right-4 bg-pink-500 text-white px-3 py-1 rounded-full text-sm font-semibold'
+                            : 'absolute top-4 right-4 bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm font-semibold'
+                        }
+                      >
+                        {badge}
                       </div>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/signup">
-                  <Button className="w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90 text-white">
-                    Book Session
-                  </Button>
-                </Link>
-              </div>
+                    ) : null}
 
-              {/* Buddy Session */}
-              <div className="bg-white rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-shadow relative">
-                <div className="absolute top-4 right-4 bg-pink-100 text-pink-700 px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
-                  <Users className="w-3 h-3" /> 2 People
-                </div>
-                <h3 className="text-2xl font-bold mb-4 text-gray-800">Buddy Session</h3>
-                <div className="mb-6">
-                  <span className="text-5xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">$25</span>
-                  <span className="text-gray-600 ml-2">/ person</span>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  {['Train with a friend', 'Shared motivation', 'Cost effective'].map((item) => (
-                    <li key={item} className="flex items-center gap-2 text-gray-700">
-                      <div className="w-5 h-5 rounded-full bg-pink-500 flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-xs">✓</span>
-                      </div>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/signup">
-                  <Button className="w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90 text-white">
-                    Book Buddy Session
-                  </Button>
-                </Link>
-              </div>
+                    <div className="mb-6 pr-20">
+                      <h3 className={`text-2xl font-bold mb-3 ${isFeatured ? 'text-white' : 'text-gray-800'}`}>
+                        {service.title}
+                      </h3>
+                      <p className={isFeatured ? 'text-purple-50' : 'text-gray-600'}>
+                        {service.description}
+                      </p>
+                    </div>
 
-              {/* 6-Week Plan */}
-              <div className="bg-white rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-shadow relative overflow-hidden">
-                <div className="absolute top-4 right-4 bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
-                  <Zap className="w-3 h-3" /> New
-                </div>
-                <h3 className="text-2xl font-bold mb-4 text-gray-800">6-Week Plan</h3>
-                <div className="mb-6">
-                  <span className="text-5xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">$125</span>
-                  <span className="text-gray-600 ml-2">one-time</span>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  {['Structured program', 'Weekly check-ins', 'Progressive overload'].map((item) => (
-                    <li key={item} className="flex items-center gap-2 text-gray-700">
-                      <div className="w-5 h-5 rounded-full bg-pink-500 flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-xs">✓</span>
-                      </div>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/signup">
-                  <Button className="w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90 text-white">
-                    Get Started
-                  </Button>
-                </Link>
-              </div>
+                    <div className="mb-6">
+                      <span
+                        className={
+                          isFeatured
+                            ? 'text-5xl font-bold text-white'
+                            : 'text-5xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent'
+                        }
+                      >
+                        {formatPrice(service.price)}
+                      </span>
+                      <span className={isFeatured ? 'ml-2 text-purple-50' : 'text-gray-600 ml-2'}>
+                        {getPriceSuffix(service)}
+                      </span>
+                    </div>
 
-              {/* Unlimited Monthly — Featured */}
-              <div className="bg-gradient-to-br from-purple-600 to-cyan-600 rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-shadow text-white relative overflow-hidden">
-                <div className="absolute top-4 right-4 bg-pink-500 text-white px-3 py-1 rounded-full text-sm font-semibold">
-                  Popular
-                </div>
-                <h3 className="text-2xl font-bold mb-4">Unlimited Monthly</h3>
-                <div className="mb-6">
-                  <span className="text-5xl font-bold">$200</span>
-                  <span className="ml-2">/ month</span>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  {['Unlimited training sessions', 'Priority booking', 'Personalized workout plans'].map((item) => (
-                    <li key={item} className="flex items-center gap-2">
-                      <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center flex-shrink-0">
-                        <span className="text-purple-600 text-xs">✓</span>
-                      </div>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/signup">
-                  <Button className="w-full bg-white text-purple-600 hover:bg-gray-100">
-                    Start Subscription
-                  </Button>
-                </Link>
-              </div>
+                    <ul className="space-y-3 mb-8">
+                      {highlights.map((item) => (
+                        <li
+                          key={item}
+                          className={`flex items-start gap-2 ${isFeatured ? 'text-white' : 'text-gray-700'}`}
+                        >
+                          <div
+                            className={
+                              isFeatured
+                                ? 'mt-0.5 rounded-full bg-white/20 p-1'
+                                : 'mt-0.5 rounded-full bg-pink-100 p-1'
+                            }
+                          >
+                            <Check className={`h-3.5 w-3.5 ${isFeatured ? 'text-white' : 'text-pink-600'}`} />
+                          </div>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
 
-              {/* Buddy Unlimited */}
-              <div className="bg-white rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-shadow relative">
-                <div className="absolute top-4 right-4 bg-pink-100 text-pink-700 px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
-                  <Users className="w-3 h-3" /> Best Value
-                </div>
-                <h3 className="text-2xl font-bold mb-4 text-gray-800">Buddy Unlimited</h3>
-                <div className="mb-6">
-                  <span className="text-5xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">$150</span>
-                  <span className="text-gray-600 ml-2">/ person/mo</span>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  {['Unlimited shared sessions', 'Full gym access', 'Partner workout plans'].map((item) => (
-                    <li key={item} className="flex items-center gap-2 text-gray-700">
-                      <div className="w-5 h-5 rounded-full bg-pink-500 flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-xs">✓</span>
-                      </div>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/signup">
-                  <Button className="w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90 text-white">
-                    Start Buddy Plan
-                  </Button>
-                </Link>
-              </div>
-
-              {/* Meal Plan */}
-              <div className="bg-white rounded-2xl p-8 shadow-xl hover:shadow-2xl transition-shadow relative">
-                <div className="absolute top-4 right-4 bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
-                  <Utensils className="w-3 h-3" /> Add-on
-                </div>
-                <h3 className="text-2xl font-bold mb-4 text-gray-800">Meal Plan</h3>
-                <div className="mb-6">
-                  <span className="text-5xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">$75</span>
-                  <span className="text-gray-600 ml-2">/ month</span>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  {['Customized meal plans', 'Grocery shopping lists', 'Dietary adjustments'].map((item) => (
-                    <li key={item} className="flex items-center gap-2 text-gray-700">
-                      <div className="w-5 h-5 rounded-full bg-pink-500 flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-xs">✓</span>
-                      </div>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/signup">
-                  <Button className="w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90 text-white">
-                    Get Nutrition Plan
-                  </Button>
-                </Link>
-              </div>
-
+                    <Link href="/signup">
+                      <Button
+                        className={
+                          isFeatured
+                            ? 'w-full bg-white text-purple-600 hover:bg-gray-100'
+                            : 'w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:opacity-90 text-white'
+                        }
+                      >
+                        {getCtaLabel(service)}
+                      </Button>
+                    </Link>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </section>
 
-        {/* CTA Section */}
         <section className="py-20 px-4 bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500">
           <div className="max-w-4xl mx-auto text-center text-white">
             <h2 className="text-4xl font-bold mb-6">Ready to Start Your Journey?</h2>
-            <p className="text-xl mb-8">Join Foundation Fitness today and achieve your fitness goals</p>
+            <p className="text-xl mb-8">
+              Join {SITE.name} today and build a training plan that actually fits your life.
+            </p>
             <Link href="/signup">
               <Button size="lg" className="bg-white text-purple-600 hover:bg-gray-100 text-lg px-8">
                 Sign Up Now
@@ -400,7 +422,6 @@ export default function HomePage() {
             </Link>
           </div>
         </section>
-
       </main>
 
       <Footer />

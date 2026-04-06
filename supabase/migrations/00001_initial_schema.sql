@@ -16,6 +16,8 @@ CREATE TABLE profiles (
   address TEXT,
   role TEXT NOT NULL DEFAULT 'client' CHECK (role IN ('client', 'trainer', 'admin')),
   avatar_url TEXT,
+  timezone TEXT NOT NULL DEFAULT 'America/New_York',
+  booking_preference TEXT NOT NULL DEFAULT 'request_system' CHECK (booking_preference IN ('request_system', 'instant_confirmation')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -57,16 +59,25 @@ CREATE TRIGGER profiles_updated_at
 CREATE TABLE services (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
+  title TEXT,
   description TEXT,
+  category TEXT NOT NULL DEFAULT 'session',
   type TEXT NOT NULL CHECK (type IN ('unlimited', 'pack', 'single', 'meal_plan')),
   price INTEGER NOT NULL DEFAULT 0, -- in cents
   session_count INTEGER, -- null for unlimited
+  session_limit INTEGER,
   duration_minutes INTEGER NOT NULL DEFAULT 50,
   max_weekly_bookings INTEGER NOT NULL DEFAULT 3,
   is_active BOOLEAN NOT NULL DEFAULT true,
-  stripe_price_id TEXT, -- for Stripe integration
+  is_popular BOOLEAN NOT NULL DEFAULT false,
+  is_session BOOLEAN NOT NULL DEFAULT true,
+  fulfillment_type TEXT NOT NULL DEFAULT 'booking' CHECK (fulfillment_type IN ('booking', 'daily', 'vimeo', 'hybrid')),
+  access_url TEXT,
+  stripe_product_id TEXT,
+  stripe_price_id TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT services_title_or_name CHECK (COALESCE(title, name) <> '')
 );
 
 CREATE TRIGGER services_updated_at
@@ -74,12 +85,14 @@ CREATE TRIGGER services_updated_at
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
 -- Default services
-INSERT INTO services (name, description, type, price, session_count, duration_minutes, max_weekly_bookings) VALUES
-  ('Unlimited Monthly', 'Unlimited training sessions per month. Up to 3 sessions per week.', 'unlimited', 29900, NULL, 50, 3),
-  ('Single Session', 'One personal training session.', 'single', 7500, 1, 50, 1),
-  ('6-Pack', '6 personal training sessions. Use at your own pace.', 'pack', 39900, 6, 50, 3),
-  ('12-Pack', '12 personal training sessions. Best value per session!', 'pack', 69900, 12, 50, 3),
-  ('Monthly Meal Plan', 'Custom monthly meal plan tailored to your goals.', 'meal_plan', 9900, NULL, 0, 0);
+INSERT INTO services (name, title, description, category, type, price, session_count, session_limit, duration_minutes, max_weekly_bookings, is_popular, is_session, fulfillment_type, access_url) VALUES
+  ('Unlimited Monthly', 'Unlimited Monthly', 'Unlimited training sessions per month. Up to 3 sessions per week.', 'subscription', 'unlimited', 29900, NULL, 3, 50, 3, true, true, 'booking', NULL),
+  ('Single Session', 'Single Session', 'One personal training session.', 'session', 'single', 7500, 1, 1, 50, 1, false, true, 'booking', NULL),
+  ('Virtual Session', 'Virtual Session', 'One live personal training session delivered over Daily video.', 'session', 'single', 7500, 1, 1, 50, 1, false, true, 'daily', NULL),
+  ('6-Pack', '6-Pack', '6 personal training sessions. Use at your own pace.', 'plan', 'pack', 39900, 6, 6, 50, 3, false, true, 'booking', NULL),
+  ('12-Pack', '12-Pack', '12 personal training sessions. Best value per session!', 'plan', 'pack', 69900, 12, 12, 50, 3, true, true, 'booking', NULL),
+  ('On-Demand Video Library', 'On-Demand Video Library', 'Monthly Vimeo library access for workouts, mobility, and recovery sessions.', 'subscription', 'unlimited', 2900, NULL, NULL, 0, 0, false, false, 'vimeo', NULL),
+  ('Monthly Meal Plan', 'Monthly Meal Plan', 'Custom monthly meal plan tailored to your goals.', 'meal_plan', 'meal_plan', 9900, NULL, NULL, 0, 0, false, false, 'booking', NULL);
 
 -- ============================================
 -- TRAINERS
@@ -153,9 +166,11 @@ CREATE TABLE bookings (
   start_time TIMESTAMPTZ NOT NULL,
   end_time TIMESTAMPTZ NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'declined', 'cancelled', 'completed')),
-  location_type TEXT NOT NULL DEFAULT 'gym' CHECK (location_type IN ('gym', 'travel')),
+  location_type TEXT NOT NULL DEFAULT 'gym' CHECK (location_type IN ('gym', 'travel', 'virtual')),
   travel_address TEXT,
   google_calendar_event_id TEXT,
+  daily_room_name TEXT,
+  daily_room_url TEXT,
   notes TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -176,13 +191,14 @@ CREATE INDEX idx_bookings_start_time ON bookings(start_time);
 CREATE TABLE meal_plans (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   client_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  trainer_id UUID NOT NULL REFERENCES profiles(id),
+  trainer_id UUID NOT NULL REFERENCES trainers(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   file_url TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_meal_plans_client ON meal_plans(client_id);
+CREATE INDEX idx_meal_plans_trainer ON meal_plans(trainer_id);
 
 -- ============================================
 -- APP SETTINGS
@@ -200,6 +216,43 @@ INSERT INTO settings (key, value) VALUES
   ('business_address', 'Acworth, GA'),
   ('business_phone', ''),
   ('business_email', 'info@foundfit.net');
+
+-- ============================================
+-- STORAGE
+-- ============================================
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('meal-plans', 'meal-plans', true)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE POLICY "Public can read meal plan files" ON storage.objects
+FOR SELECT USING (bucket_id = 'meal-plans');
+
+CREATE POLICY "Trainers and admins can upload meal plan files" ON storage.objects
+FOR INSERT WITH CHECK (
+  bucket_id = 'meal-plans'
+  AND EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = auth.uid() AND role IN ('trainer', 'admin')
+  )
+);
+
+CREATE POLICY "Trainers and admins can update meal plan files" ON storage.objects
+FOR UPDATE USING (
+  bucket_id = 'meal-plans'
+  AND EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = auth.uid() AND role IN ('trainer', 'admin')
+  )
+);
+
+CREATE POLICY "Trainers and admins can delete meal plan files" ON storage.objects
+FOR DELETE USING (
+  bucket_id = 'meal-plans'
+  AND EXISTS (
+    SELECT 1 FROM profiles
+    WHERE id = auth.uid() AND role IN ('trainer', 'admin')
+  )
+);
 
 -- ============================================
 -- ROW LEVEL SECURITY
@@ -283,10 +336,13 @@ CREATE POLICY "Admins can manage all bookings" ON bookings FOR ALL USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
 );
 
--- Meal plans: clients see own, trainers manage
+-- Meal plans: clients see own, trainers manage their own, admins manage all
 CREATE POLICY "Clients can view own meal plans" ON meal_plans FOR SELECT USING (client_id = auth.uid());
-CREATE POLICY "Trainers can manage meal plans" ON meal_plans FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'trainer'))
+CREATE POLICY "Trainers can manage own meal plans" ON meal_plans FOR ALL USING (
+  EXISTS (SELECT 1 FROM trainers WHERE id = meal_plans.trainer_id AND user_id = auth.uid())
+);
+CREATE POLICY "Admins can manage all meal plans" ON meal_plans FOR ALL USING (
+  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
 );
 
 -- Settings: everyone can read, admins can update
@@ -294,3 +350,4 @@ CREATE POLICY "Anyone can read settings" ON settings FOR SELECT USING (true);
 CREATE POLICY "Admins can manage settings" ON settings FOR ALL USING (
   EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin')
 );
+

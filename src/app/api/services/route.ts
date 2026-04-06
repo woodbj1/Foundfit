@@ -10,6 +10,30 @@ function deriveServiceType(category?: string, isSession?: boolean, sessionLimit?
   return 'single'
 }
 
+function normalizeFulfillmentType(value?: string | null) {
+  switch (value) {
+    case 'daily':
+    case 'vimeo':
+    case 'hybrid':
+      return value
+    default:
+      return 'booking'
+  }
+}
+
+function normalizeAccessUrl(value?: string | null) {
+  if (!value) return null
+  try {
+    return new URL(value).toString()
+  } catch {
+    throw new Error('access_url must be a valid URL')
+  }
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -22,13 +46,34 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { title, description, price, duration_minutes, category, is_popular, is_session, session_limit } = body
+    const {
+      title,
+      description,
+      price,
+      duration_minutes,
+      category,
+      is_popular,
+      is_session,
+      session_limit,
+      fulfillment_type,
+      access_url,
+    } = body
 
     if (!title || price == null) {
       return NextResponse.json({ error: 'title and price are required' }, { status: 400 })
     }
 
-    const serviceType = deriveServiceType(category, is_session, session_limit)
+    const fulfillmentType = normalizeFulfillmentType(fulfillment_type)
+    const normalizedIsSession =
+      fulfillmentType === 'vimeo'
+        ? false
+        : fulfillmentType === 'daily' || fulfillmentType === 'hybrid'
+          ? true
+          : (is_session ?? true)
+    const normalizedSessionLimit = normalizedIsSession ? session_limit : null
+    const normalizedDuration = normalizedIsSession ? duration_minutes : 0
+    const normalizedAccessUrl = normalizeAccessUrl(access_url)
+    const serviceType = deriveServiceType(category, normalizedIsSession, normalizedSessionLimit)
     const amountCents = Math.round(Number(price) * 100)
 
     const stripe = getStripe()
@@ -37,8 +82,9 @@ export async function POST(req: NextRequest) {
       description: description || undefined,
       metadata: {
         category: category || 'session',
-        duration_minutes: String(duration_minutes || ''),
+        duration_minutes: String(normalizedDuration || ''),
         service_type: serviceType,
+        fulfillment_type: fulfillmentType,
       },
     })
 
@@ -54,14 +100,22 @@ export async function POST(req: NextRequest) {
       title,
       description,
       price: amountCents,
-      duration_minutes,
       category,
       type: serviceType,
       is_popular: is_popular ?? false,
-      is_session: is_session ?? true,
-      session_limit,
-      session_count: is_session ? session_limit || 1 : null,
-      max_weekly_bookings: serviceType === 'unlimited' ? (session_limit || 3) : 0,
+      is_session: normalizedIsSession,
+      session_limit: normalizedSessionLimit,
+      session_count:
+        serviceType === 'unlimited' || !normalizedIsSession
+          ? null
+          : normalizedSessionLimit || 1,
+      max_weekly_bookings:
+        serviceType === 'unlimited' && normalizedIsSession
+          ? (normalizedSessionLimit || 3)
+          : 0,
+      duration_minutes: normalizedDuration,
+      fulfillment_type: fulfillmentType,
+      access_url: normalizedAccessUrl,
       is_active: true,
       stripe_product_id: stripeProduct.id,
       stripe_price_id: stripePrice.id,
@@ -70,9 +124,9 @@ export async function POST(req: NextRequest) {
     if (error) throw error
 
     return NextResponse.json({ data })
-  } catch (err: any) {
-    console.error('[POST /api/services]', err)
-    return NextResponse.json({ error: err.message || 'Failed to create service' }, { status: 500 })
+  } catch (error: unknown) {
+    console.error('[POST /api/services]', error)
+    return NextResponse.json({ error: getErrorMessage(error, 'Failed to create service') }, { status: 500 })
   }
 }
 
@@ -88,11 +142,33 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { id, title, description, price, duration_minutes, category, is_popular, is_session, session_limit } = body
+    const {
+      id,
+      title,
+      description,
+      price,
+      duration_minutes,
+      category,
+      is_popular,
+      is_session,
+      session_limit,
+      fulfillment_type,
+      access_url,
+    } = body
 
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
-    const serviceType = deriveServiceType(category, is_session, session_limit)
+    const fulfillmentType = normalizeFulfillmentType(fulfillment_type)
+    const normalizedIsSession =
+      fulfillmentType === 'vimeo'
+        ? false
+        : fulfillmentType === 'daily' || fulfillmentType === 'hybrid'
+          ? true
+          : (is_session ?? true)
+    const normalizedSessionLimit = normalizedIsSession ? session_limit : null
+    const normalizedDuration = normalizedIsSession ? duration_minutes : 0
+    const normalizedAccessUrl = normalizeAccessUrl(access_url)
+    const serviceType = deriveServiceType(category, normalizedIsSession, normalizedSessionLimit)
     const amountCents = Math.round(Number(price) * 100)
 
     const { data: existing, error: fetchErr } = await supabase
@@ -111,8 +187,9 @@ export async function PUT(req: NextRequest) {
         description: description || undefined,
         metadata: {
           category: category || 'session',
-          duration_minutes: String(duration_minutes || ''),
+          duration_minutes: String(normalizedDuration || ''),
           service_type: serviceType,
+          fulfillment_type: fulfillmentType,
         },
       })
 
@@ -134,22 +211,30 @@ export async function PUT(req: NextRequest) {
       title,
       description,
       price: amountCents,
-      duration_minutes,
       category,
       type: serviceType,
       is_popular: is_popular ?? false,
-      is_session: is_session ?? true,
-      session_limit,
-      session_count: is_session ? session_limit || 1 : null,
-      max_weekly_bookings: serviceType === 'unlimited' ? (session_limit || 3) : 0,
+      is_session: normalizedIsSession,
+      session_limit: normalizedSessionLimit,
+      session_count:
+        serviceType === 'unlimited' || !normalizedIsSession
+          ? null
+          : normalizedSessionLimit || 1,
+      max_weekly_bookings:
+        serviceType === 'unlimited' && normalizedIsSession
+          ? (normalizedSessionLimit || 3)
+          : 0,
+      duration_minutes: normalizedDuration,
+      fulfillment_type: fulfillmentType,
+      access_url: normalizedAccessUrl,
     }).eq('id', id).select().single()
 
     if (error) throw error
 
     return NextResponse.json({ data })
-  } catch (err: any) {
-    console.error('[PUT /api/services]', err)
-    return NextResponse.json({ error: err.message || 'Failed to update service' }, { status: 500 })
+  } catch (error: unknown) {
+    console.error('[PUT /api/services]', error)
+    return NextResponse.json({ error: getErrorMessage(error, 'Failed to update service') }, { status: 500 })
   }
 }
 
@@ -183,8 +268,8 @@ export async function DELETE(req: NextRequest) {
     if (error) throw error
 
     return NextResponse.json({ success: true })
-  } catch (err: any) {
-    console.error('[DELETE /api/services]', err)
-    return NextResponse.json({ error: err.message || 'Failed to delete service' }, { status: 500 })
+  } catch (error: unknown) {
+    console.error('[DELETE /api/services]', error)
+    return NextResponse.json({ error: getErrorMessage(error, 'Failed to delete service') }, { status: 500 })
   }
 }

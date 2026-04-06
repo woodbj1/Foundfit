@@ -10,6 +10,8 @@ Personal training booking platform — built for trainers and their clients.
 - **Stripe Payments** — Subscriptions (unlimited monthly), session packs, single sessions
 - **Google Calendar** — Auto-sync approved bookings, check busy slots for availability
 - **Email Notifications** — Booking requests, approvals, cancellations, payment confirmations, meal plan delivery
+- **Daily Virtual Sessions** — Auto-create Daily rooms for approved virtual bookings and generate secure join links
+- **Vimeo Library Access** — Support digital/video library products via per-service access URLs
 - **Responsive Design** — Works on desktop & mobile with collapsible sidebar
 
 ## Tech Stack
@@ -31,6 +33,7 @@ Personal training booking platform — built for trainers and their clients.
 - Stripe account
 - Google Cloud project (for Calendar API)
 - Resend account
+- Daily.co account (for virtual sessions)`r`n- Vimeo showcase/library URL (per product or global fallback)
 
 ### Setup
 
@@ -48,9 +51,10 @@ Personal training booking platform — built for trainers and their clients.
    ```
 
 3. **Run Supabase migration:**
-   - Go to your Supabase project → SQL Editor
-   - Paste and run `supabase/migrations/00001_initial_schema.sql`
-   - Create a `meal-plans` storage bucket (public)
+   - Recommended: link the project and run `supabase db push --linked`
+   - If you don't have a Supabase CLI access token handy, go to your Supabase project ? SQL Editor and paste/run `supabase/migrations/00001_initial_schema.sql`
+   - The migration creates the `meal-plans` bucket for you
+   - If you created users or storage objects before the latest security hardening pass, run `node scripts/repair-supabase-state.mjs` to sync auth role metadata and lock down the `meal-plans` bucket
 
 4. **Set up Stripe webhook:**
    ```bash
@@ -71,8 +75,31 @@ Personal training booking platform — built for trainers and their clients.
 
 6. **Create your admin account:**
    - Sign up at `/signup`
-   - In Supabase, update your profile's `role` to `admin`
-   - Add yourself as a trainer from the Admin → Trainers page
+   - In Supabase SQL Editor, run the bootstrap SQL in `supabase/bootstrap/first-admin.sql` with your email
+   - Add yourself as a trainer from the Admin ? Trainers page
+
+### Production integrations checklist
+
+For `foundfit.net`, make sure these are configured before launch:
+
+- **Supabase**
+  - Production project URL/keys in Vercel
+  - Latest migrations applied
+  - `meal-plans` storage bucket exists
+  - First admin bootstrapped
+- **Stripe**
+  - Production secret + webhook secret
+  - Webhook endpoint points to `https://foundfit.net/api/webhooks/stripe`
+  - Products/prices match service records in Supabase
+- **Google Calendar**
+  - OAuth client + refresh token belong to the production FoundFit calendar owner
+  - `GOOGLE_CALENDAR_ID` points at the real booking calendar
+- **Resend**
+  - `RESEND_FROM_EMAIL` uses a verified domain/email for `foundfit.net`
+- **Daily**
+  - `DAILY_API_KEY` is set for any service using `daily` or `hybrid` fulfillment
+- **Vimeo library products**
+  - Each Vimeo/digital service has a valid `access_url` in the admin service editor
 
 ## Project Structure
 
@@ -134,3 +161,4 @@ Travel fee for in-home training: $25 (configurable in admin settings).
 ## License
 
 Private — All rights reserved.
+

@@ -1,12 +1,14 @@
 import type { Metadata } from 'next'
+import Image from 'next/image'
 import Link from 'next/link'
 import { Dumbbell, MapPin, Car, Check, ArrowRight, Home } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Footer from '@/components/Footer'
+import { SITE, formatPrice } from '@/lib/site-config'
 
 export const metadata: Metadata = {
   title: 'Our Location',
-  description: 'Visit our private, fully-equipped training facility in Acworth, GA. Featuring top-tier equipment in a comfortable, focused environment.',
+  description: `Visit the ${SITE.name} private training facility in ${SITE.location}.`,
 }
 
 const amenities = [
@@ -46,15 +48,13 @@ const images = [
 export default function LocationPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-cyan-50 flex flex-col">
-
-      {/* Navigation */}
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link href="/" className="flex items-center gap-2">
               <Dumbbell className="h-8 w-8 text-purple-600" />
               <span className="text-2xl font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent">
-                Foundation Fitness
+                {SITE.name}
               </span>
             </Link>
             <div className="flex gap-3">
@@ -74,8 +74,6 @@ export default function LocationPage() {
       </nav>
 
       <main className="flex-grow">
-
-        {/* Hero */}
         <section className="py-16 px-4 text-center">
           <div className="max-w-4xl mx-auto">
             <h1 className="text-4xl md:text-5xl font-bold mb-6 text-gray-900">
@@ -87,7 +85,6 @@ export default function LocationPage() {
           </div>
         </section>
 
-        {/* Gallery Grid */}
         <section className="px-4 pb-20">
           <div className="max-w-7xl mx-auto">
             <div className="grid md:grid-cols-2 gap-6">
@@ -96,9 +93,11 @@ export default function LocationPage() {
                   key={img.title}
                   className="relative group overflow-hidden rounded-2xl shadow-lg aspect-[4/3]"
                 >
-                  <img
+                  <Image
                     src={img.src}
                     alt={img.alt}
+                    width={1200}
+                    height={900}
                     className="object-cover w-full h-full transform transition-transform duration-500 group-hover:scale-105"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end p-6">
@@ -110,13 +109,9 @@ export default function LocationPage() {
           </div>
         </section>
 
-        {/* Address, Amenities & Policy */}
         <section className="py-20 bg-white/50 backdrop-blur-sm px-4">
           <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16">
-
-            {/* Address & Amenities */}
             <div>
-              {/* Address */}
               <div className="mb-12 p-6 bg-white rounded-2xl shadow-xl border border-purple-100">
                 <h2 className="text-3xl font-bold mb-4 flex items-center gap-3 text-gray-900">
                   <div className="p-2 bg-pink-100 rounded-lg">
@@ -124,10 +119,10 @@ export default function LocationPage() {
                   </div>
                   Our Studio Address
                 </h2>
-                <p className="text-xl text-gray-700 font-semibold mb-2">6184 Mortimer CT NW,</p>
-                <p className="text-xl text-gray-700 font-semibold">Acworth GA 30101</p>
+                <p className="text-xl text-gray-700 font-semibold mb-2">{SITE.addressLine1}</p>
+                <p className="text-xl text-gray-700 font-semibold">{SITE.addressLine2}</p>
                 <a
-                  href="https://maps.google.com/?q=6184+Mortimer+CT+NW,+Acworth+GA+30101"
+                  href={`https://maps.google.com/?q=${encodeURIComponent(SITE.fullAddress)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 mt-4 text-purple-600 hover:text-purple-700 font-medium transition-colors"
@@ -136,7 +131,6 @@ export default function LocationPage() {
                 </a>
               </div>
 
-              {/* Amenities */}
               <div>
                 <h2 className="text-3xl font-bold mb-8 flex items-center gap-3 text-gray-900">
                   <div className="p-2 bg-purple-100 rounded-lg">
@@ -162,10 +156,7 @@ export default function LocationPage() {
               </div>
             </div>
 
-            {/* Location Policy & Travel */}
             <div className="space-y-8">
-
-              {/* In-Studio */}
               <div className="bg-white rounded-2xl p-8 shadow-lg border-l-4 border-purple-500">
                 <h3 className="text-2xl font-bold mb-4 flex items-center gap-2 text-gray-900">
                   <Home className="w-6 h-6 text-purple-600" />
@@ -181,7 +172,6 @@ export default function LocationPage() {
                 </div>
               </div>
 
-              {/* Mobile Training */}
               <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-8 shadow-lg text-white relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-4 opacity-10">
                   <Car className="w-32 h-32" />
@@ -197,7 +187,7 @@ export default function LocationPage() {
                 <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20 mb-6">
                   <div className="flex justify-between items-center mb-2">
                     <span className="font-semibold text-purple-200">Travel Fee</span>
-                    <span className="text-2xl font-bold text-white">$10</span>
+                    <span className="text-2xl font-bold text-white">{formatPrice(SITE.travelFeeCents)}</span>
                   </div>
                   <p className="text-xs text-gray-400">
                     Added to your session price to cover travel time and fuel costs.
@@ -210,11 +200,9 @@ export default function LocationPage() {
                 </Link>
               </div>
             </div>
-
           </div>
         </section>
 
-        {/* CTA */}
         <section className="py-20 px-4 text-center">
           <div className="max-w-3xl mx-auto">
             <h2 className="text-3xl font-bold mb-6 text-gray-900">Ready to See It in Person?</h2>
@@ -238,7 +226,6 @@ export default function LocationPage() {
             </div>
           </div>
         </section>
-
       </main>
 
       <Footer />

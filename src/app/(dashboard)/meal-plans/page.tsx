@@ -37,7 +37,7 @@ export default async function MealPlansPage() {
                 </p>
               </CardHeader>
               <CardContent>
-                <a href={plan.file_url} target="_blank" rel="noopener noreferrer">
+                <a href={`/api/meal-plans/${plan.id}/download`} target="_blank" rel="noopener noreferrer">
                   <Button variant="outline" className="w-full gap-2">
                     <Download className="h-4 w-4" />
                     Download PDF

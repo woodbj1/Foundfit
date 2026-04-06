@@ -15,6 +15,10 @@ async function getTrainerIdForUser(supabase: Awaited<ReturnType<typeof createCli
   return trainer.id as string
 }
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unexpected server error'
+}
+
 export async function GET() {
   try {
     const supabase = await createClient()
@@ -33,8 +37,8 @@ export async function GET() {
 
     if (error) throw error
     return NextResponse.json({ data })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
   }
 }
 
@@ -67,8 +71,8 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
     return NextResponse.json({ data })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
   }
 }
 
@@ -93,7 +97,7 @@ export async function DELETE(req: NextRequest) {
 
     if (error) throw error
     return NextResponse.json({ success: true })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
   }
 }

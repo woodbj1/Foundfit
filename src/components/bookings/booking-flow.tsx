@@ -1,6 +1,19 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { format } from 'date-fns'
+import { toast } from 'sonner'
+import {
+  Building2,
+  ChevronRight,
+  Library,
+  Loader2,
+  MapPin,
+  User,
+  Video,
+} from 'lucide-react'
+
 import { Calendar } from '@/components/ui/calendar'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,10 +22,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { Loader2, MapPin, Building2, Clock, ChevronRight, User } from 'lucide-react'
-import { format } from 'date-fns'
-import { toast } from 'sonner'
-import type { TimeSlot, LocationType, Profile } from '@/lib/types'
+import type { LocationType, Profile, TimeSlot } from '@/lib/types'
+import { isVirtualService, type BookableServiceOption } from '@/lib/product-access'
+
 interface BookingTrainer {
   id: string
   user_id: string
@@ -20,17 +32,18 @@ interface BookingTrainer {
   is_active: boolean
   profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url'>
 }
-import { useRouter } from 'next/navigation'
 
 interface Props {
   trainers: BookingTrainer[]
   travelFee: number
-  isUnlimited: boolean
-  sessionsLeft: number
+  bookableServices: BookableServiceOption[]
 }
 
-export default function BookingFlow({ trainers, travelFee, isUnlimited, sessionsLeft }: Props) {
+export default function BookingFlow({ trainers, travelFee, bookableServices }: Props) {
   const router = useRouter()
+  const [selectedService, setSelectedService] = useState<BookableServiceOption | null>(
+    bookableServices.length === 1 ? bookableServices[0] : null
+  )
   const [selectedTrainer, setSelectedTrainer] = useState<BookingTrainer | null>(
     trainers.length === 1 ? trainers[0] : null
   )
@@ -43,79 +56,181 @@ export default function BookingFlow({ trainers, travelFee, isUnlimited, sessions
   const [loading, setLoading] = useState(false)
   const [slotsLoading, setSlotsLoading] = useState(false)
 
-  // Load available slots when date or trainer changes
   useEffect(() => {
-    if (!date || !selectedTrainer) return
+    if (!selectedService || !selectedTrainer || !date) return
+
+    const selectedDate = date
+    const activeTrainer = selectedTrainer
+    const activeService = selectedService
+
     async function loadSlots() {
       setSlotsLoading(true)
       setSelectedSlot(null)
       setSlots([])
+
       try {
         const params = new URLSearchParams({
-          date: format(date!, 'yyyy-MM-dd'),
-          trainer_id: selectedTrainer!.id,
+          date: format(selectedDate, 'yyyy-MM-dd'),
+          trainer_id: activeTrainer.id,
+          service_id: activeService.service.id,
         })
         const res = await fetch(`/api/available-slots?${params}`)
         const data = await res.json()
-        if (data.slots) setSlots(data.slots)
+        if (data.slots) {
+          setSlots(data.slots)
+        }
       } catch {
         toast.error('Failed to load available slots')
+      } finally {
+        setSlotsLoading(false)
       }
-      setSlotsLoading(false)
     }
+
     loadSlots()
-  }, [date, selectedTrainer])
+  }, [date, selectedService, selectedTrainer])
 
   async function handleBook() {
-    if (!selectedSlot || !selectedTrainer) return
-    if (locationType === 'travel' && !travelAddress.trim()) {
+    if (!selectedService || !selectedTrainer || !selectedSlot) return
+
+    const virtualBooking = isVirtualService(selectedService.service)
+    if (!virtualBooking && locationType === 'travel' && !travelAddress.trim()) {
       toast.error('Please enter your address for in-home training')
       return
     }
 
     setLoading(true)
+
     try {
       const res = await fetch('/api/bookings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          service_id: selectedService.service.id,
           trainer_id: selectedTrainer.id,
           start_time: selectedSlot.start,
-          location_type: locationType,
-          travel_address: locationType === 'travel' ? travelAddress : undefined,
+          location_type: virtualBooking ? 'virtual' : locationType,
+          travel_address: !virtualBooking && locationType === 'travel' ? travelAddress : undefined,
           notes: notes || undefined,
         }),
       })
 
       const data = await res.json()
-
       if (!res.ok) {
-        toast.error(data.error || 'Failed to book session')
-        setLoading(false)
-        return
+        throw new Error(data.error || 'Failed to book session')
       }
 
       toast.success("Booking request submitted! You'll be notified once it's approved.")
       router.push('/sessions')
-    } catch {
-      toast.error('Something went wrong')
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Something went wrong')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
+
+  const virtualBooking = selectedService ? isVirtualService(selectedService.service) : false
+  const selectedServiceSessionsLeft = selectedService?.remainingSessions ?? 0
 
   return (
     <div className="space-y-6">
-      {/* Step 1: Select Trainer (only shown if multiple trainers) */}
-      {trainers.length > 1 && (
+      {bookableServices.length > 1 && (
         <div>
           <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">1</span>
+            <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">
+              1
+            </span>
+            Select Service
+          </h2>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {bookableServices.map((option) => {
+              const isSelected = selectedService?.service.id === option.service.id
+              const optionIsVirtual = isVirtualService(option.service)
+
+              return (
+                <button
+                  key={option.service.id}
+                  onClick={() => {
+                    setSelectedService(option)
+                    setDate(undefined)
+                    setSlots([])
+                    setSelectedSlot(null)
+                    setLocationType('gym')
+                    setTravelAddress('')
+                  }}
+                  className={`flex items-start gap-3 p-4 rounded-xl border text-left transition-colors ${
+                    isSelected
+                      ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                      : 'border-border hover:border-primary/50 bg-card'
+                  }`}
+                >
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                    {optionIsVirtual ? (
+                      <Video className="h-5 w-5 text-primary" />
+                    ) : (
+                      <Building2 className="h-5 w-5 text-primary" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium text-sm">{option.service.name}</p>
+                      <Badge variant={optionIsVirtual ? 'secondary' : 'outline'}>
+                        {optionIsVirtual ? 'Daily' : 'Studio'}
+                      </Badge>
+                      {!option.service.is_session && (
+                        <Badge variant="outline">
+                          <Library className="h-3 w-3 mr-1" />
+                          Library
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                      {option.service.session_count
+                        ? `${option.service.session_count} session${option.service.session_count !== 1 ? 's' : ''} included`
+                        : option.accessType === 'subscription'
+                          ? 'Active subscription access'
+                          : 'Bookable service'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {option.remainingSessions == null
+                        ? 'Unlimited access'
+                        : `${option.remainingSessions} remaining`}
+                    </p>
+                  </div>
+                  {isSelected && <ChevronRight className="h-4 w-4 text-primary shrink-0 mt-0.5" />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {bookableServices.length === 1 && selectedService && (
+        <div className="flex flex-wrap items-center gap-3 p-3 bg-muted/50 rounded-lg w-fit">
+          {virtualBooking ? (
+            <Video className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+          )}
+          <span className="text-sm font-medium">{selectedService.service.name}</span>
+          <Badge variant="secondary">
+            {selectedService.remainingSessions == null ? 'Unlimited' : `${selectedService.remainingSessions} left`}
+          </Badge>
+        </div>
+      )}
+
+      {selectedService && trainers.length > 1 && (
+        <div>
+          <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
+            <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">
+              {bookableServices.length > 1 ? '2' : '1'}
+            </span>
             Select Trainer
           </h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {trainers.map((trainer) => {
               const isSelected = selectedTrainer?.id === trainer.id
               const name = trainer.profile?.full_name ?? 'Trainer'
+
               return (
                 <button
                   key={trainer.id}
@@ -150,11 +265,12 @@ export default function BookingFlow({ trainers, travelFee, isUnlimited, sessions
         </div>
       )}
 
-      {/* Single trainer: show selected trainer name */}
-      {trainers.length === 1 && selectedTrainer && (
+      {selectedService && trainers.length === 1 && selectedTrainer && (
         <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg w-fit">
           <User className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">{selectedTrainer.profile?.full_name ?? 'Your Trainer'}</span>
+          <span className="text-sm font-medium">
+            {selectedTrainer.profile?.full_name ?? 'Your Trainer'}
+          </span>
         </div>
       )}
 
@@ -162,15 +278,15 @@ export default function BookingFlow({ trainers, travelFee, isUnlimited, sessions
         <p className="text-muted-foreground text-sm">No trainers are currently available.</p>
       )}
 
-      {/* Steps 2 + 3: Date/Time + Details (only shown once trainer is selected) */}
-      {selectedTrainer && (
+      {selectedService && selectedTrainer && (
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Calendar */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold shrink-0">
-                  {trainers.length > 1 ? '2' : '1'}
+                  {bookableServices.length > 1
+                    ? trainers.length > 1 ? '3' : '2'
+                    : trainers.length > 1 ? '2' : '1'}
                 </span>
                 Select Date
               </CardTitle>
@@ -180,18 +296,19 @@ export default function BookingFlow({ trainers, travelFee, isUnlimited, sessions
                 mode="single"
                 selected={date}
                 onSelect={setDate}
-                disabled={(d) => d < new Date() || d.getDay() === 0}
+                disabled={(day) => day < new Date() || day.getDay() === 0}
                 className="rounded-md"
               />
             </CardContent>
           </Card>
 
-          {/* Time Slots */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold shrink-0">
-                  {trainers.length > 1 ? '3' : '2'}
+                  {bookableServices.length > 1
+                    ? trainers.length > 1 ? '4' : '3'
+                    : trainers.length > 1 ? '3' : '2'}
                 </span>
                 Available Times
               </CardTitle>
@@ -216,6 +333,7 @@ export default function BookingFlow({ trainers, travelFee, isUnlimited, sessions
                 <div className="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto">
                   {slots.map((slot) => {
                     const isSelected = selectedSlot?.start === slot.start
+
                     return (
                       <Button
                         key={slot.start}
@@ -233,75 +351,96 @@ export default function BookingFlow({ trainers, travelFee, isUnlimited, sessions
             </CardContent>
           </Card>
 
-          {/* Session Details */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold shrink-0">
-                  {trainers.length > 1 ? '4' : '3'}
+                  {bookableServices.length > 1
+                    ? trainers.length > 1 ? '5' : '4'
+                    : trainers.length > 1 ? '4' : '3'}
                 </span>
                 Session Details
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              {/* Location */}
-              <div className="space-y-3">
-                <Label>Location</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant={locationType === 'gym' ? 'default' : 'outline'}
-                    onClick={() => setLocationType('gym')}
-                    className="gap-2"
-                    size="sm"
-                  >
-                    <Building2 className="h-4 w-4" />
-                    Studio
-                  </Button>
-                  <Button
-                    variant={locationType === 'travel' ? 'default' : 'outline'}
-                    onClick={() => setLocationType('travel')}
-                    className="gap-2"
-                    size="sm"
-                  >
-                    <MapPin className="h-4 w-4" />
-                    My Home
-                  </Button>
-                </div>
-                {locationType === 'travel' && (
-                  <div className="space-y-2">
-                    <Input
-                      placeholder="Enter your address"
-                      value={travelAddress}
-                      onChange={(e) => setTravelAddress(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Travel fee: ${(travelFee / 100).toFixed(2)}
-                    </p>
+              {virtualBooking ? (
+                <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-blue-900">
+                    <Video className="h-4 w-4" />
+                    Daily virtual session
                   </div>
-                )}
-              </div>
+                  <p className="text-sm text-blue-700">
+                    This session is delivered online. Once it is approved, FoundFit will attach a
+                    Daily join link to the booking.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <Label>Location</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      variant={locationType === 'gym' ? 'default' : 'outline'}
+                      onClick={() => setLocationType('gym')}
+                      className="gap-2"
+                      size="sm"
+                    >
+                      <Building2 className="h-4 w-4" />
+                      Studio
+                    </Button>
+                    <Button
+                      variant={locationType === 'travel' ? 'default' : 'outline'}
+                      onClick={() => setLocationType('travel')}
+                      className="gap-2"
+                      size="sm"
+                    >
+                      <MapPin className="h-4 w-4" />
+                      My Home
+                    </Button>
+                  </div>
+                  {locationType === 'travel' && (
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="Enter your address"
+                        value={travelAddress}
+                        onChange={(event) => setTravelAddress(event.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Travel fee: ${(travelFee / 100).toFixed(2)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
-              {/* Notes */}
               <div className="space-y-2">
                 <Label>Notes (optional)</Label>
                 <Textarea
                   placeholder="Anything your trainer should know?"
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={(event) => setNotes(event.target.value)}
                   rows={3}
                 />
               </div>
 
-              {/* Summary */}
               {selectedSlot && (
                 <div className="bg-muted/50 rounded-lg p-3 space-y-1.5">
                   <h4 className="font-medium text-sm">Booking Summary</h4>
                   <div className="text-sm space-y-1 text-muted-foreground">
-                    <p>📅 {format(new Date(selectedSlot.start), 'EEE, MMM d, yyyy')}</p>
-                    <p>🕐 {format(new Date(selectedSlot.start), 'h:mm a')} – {format(new Date(selectedSlot.end), 'h:mm a')}</p>
-                    <p>👤 {selectedTrainer.profile?.full_name ?? 'Trainer'}</p>
-                    <p>📍 {locationType === 'gym' ? 'Studio' : 'In-Home Training'}</p>
-                    {locationType === 'travel' && travelFee > 0 && (
+                    <p>Service: {selectedService.service.name}</p>
+                    <p>Date: {format(new Date(selectedSlot.start), 'EEE, MMM d, yyyy')}</p>
+                    <p>
+                      Time: {format(new Date(selectedSlot.start), 'h:mm a')} -{' '}
+                      {format(new Date(selectedSlot.end), 'h:mm a')}
+                    </p>
+                    <p>Trainer: {selectedTrainer.profile?.full_name ?? 'Trainer'}</p>
+                    <p>
+                      Location: {virtualBooking
+                        ? 'Daily virtual session'
+                        : locationType === 'gym'
+                          ? 'Studio'
+                          : 'In-home training'}
+                    </p>
+                    {!virtualBooking && locationType === 'travel' && travelFee > 0 && (
                       <Badge variant="secondary" className="mt-1">
                         +${(travelFee / 100).toFixed(2)} travel fee
                       </Badge>
@@ -310,10 +449,10 @@ export default function BookingFlow({ trainers, travelFee, isUnlimited, sessions
                 </div>
               )}
 
-              {/* Package info */}
-              {!isUnlimited && sessionsLeft > 0 && selectedSlot && (
+              {selectedService.accessType === 'pack' && selectedServiceSessionsLeft > 0 && selectedSlot && (
                 <p className="text-xs text-muted-foreground">
-                  After this booking: <strong>{sessionsLeft - 1}</strong> session{sessionsLeft - 1 !== 1 ? 's' : ''} remaining
+                  After this booking: <strong>{selectedServiceSessionsLeft - 1}</strong> session
+                  {selectedServiceSessionsLeft - 1 !== 1 ? 's' : ''} remaining
                 </p>
               )}
 

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { ensureProfileAndRole } from '@/lib/supabase/auth-repair'
 import Sidebar from '@/components/nav/sidebar'
 import type { UserRole } from '@/lib/types'
 
@@ -15,14 +16,18 @@ export default async function DashboardLayout({
     redirect('/login')
   }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+  const profile = await ensureProfileAndRole(user)
 
-  if (!profile) {
-    redirect('/login')
+  if (profile.role === 'trainer') {
+    const { data: trainer } = await supabase
+      .from('trainers')
+      .select('onboarding_completed_at')
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (!trainer?.onboarding_completed_at) {
+      redirect('/trainer-setup')
+    }
   }
 
   return (

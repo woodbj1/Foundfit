@@ -19,6 +19,8 @@ export type Service = {
   is_popular?: boolean
   is_session?: boolean
   session_limit?: number | null
+  fulfillment_type?: 'booking' | 'daily' | 'vimeo' | 'hybrid'
+  access_url?: string | null
 }
 
 interface Props {
@@ -27,9 +29,22 @@ interface Props {
   onSuccess: () => void
 }
 
+type ServiceFormData = {
+  name: string
+  description: string
+  price: string
+  duration_minutes: string
+  category: string
+  is_popular: boolean
+  is_session: boolean
+  session_limit: string
+  fulfillment_type: NonNullable<Service['fulfillment_type']>
+  access_url: string
+}
+
 export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Props) {
   const [loading, setLoading] = useState(false)
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ServiceFormData>({
     name: '',
     description: '',
     price: '',
@@ -38,6 +53,8 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
     is_popular: false,
     is_session: true,
     session_limit: '',
+    fulfillment_type: 'booking' as const,
+    access_url: '',
   })
 
   useEffect(() => {
@@ -51,9 +68,31 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
         is_popular: serviceToEdit.is_popular ?? false,
         is_session: serviceToEdit.is_session ?? true,
         session_limit: String(serviceToEdit.session_limit ?? ''),
+        fulfillment_type: serviceToEdit.fulfillment_type || 'booking',
+        access_url: serviceToEdit.access_url || '',
       })
     }
   }, [serviceToEdit])
+
+  useEffect(() => {
+    if (formData.fulfillment_type === 'vimeo') {
+      setFormData((prev) => ({
+        ...prev,
+        is_session: false,
+        duration_minutes: '0',
+        session_limit: '',
+      }))
+      return
+    }
+
+    if (formData.fulfillment_type === 'daily' || formData.fulfillment_type === 'hybrid') {
+      setFormData((prev) => ({
+        ...prev,
+        is_session: true,
+        duration_minutes: prev.duration_minutes === '0' ? '50' : prev.duration_minutes,
+      }))
+    }
+  }, [formData.fulfillment_type])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -77,6 +116,8 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
         is_popular: formData.is_popular,
         is_session: formData.is_session,
         session_limit: formData.session_limit ? parseInt(formData.session_limit) : null,
+        fulfillment_type: formData.fulfillment_type,
+        access_url: formData.access_url || null,
       }
 
       const method = serviceToEdit?.id ? 'PUT' : 'POST'
@@ -96,8 +137,8 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
       toast.success(serviceToEdit ? 'Service updated successfully!' : 'Service added successfully!')
       onSuccess()
       onClose()
-    } catch (err: any) {
-      toast.error(err.message || 'Could not save service.')
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Could not save service.')
     } finally {
       setLoading(false)
     }
@@ -146,6 +187,25 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
             </select>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="fulfillment_type">Fulfillment</Label>
+            <select
+              id="fulfillment_type"
+              name="fulfillment_type"
+              value={formData.fulfillment_type}
+              onChange={handleChange}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <option value="booking">Standard Booking</option>
+              <option value="daily">Daily Virtual Session</option>
+              <option value="vimeo">Vimeo Library Access</option>
+              <option value="hybrid">Daily + Vimeo Hybrid</option>
+            </select>
+            <p className="text-xs text-gray-500">
+              Choose how this product is fulfilled after purchase.
+            </p>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="price">Price ($)</Label>
@@ -187,6 +247,7 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
               id="is_session"
               checked={formData.is_session}
               onChange={(e) => setFormData((p) => ({ ...p, is_session: e.target.checked }))}
+              disabled={formData.fulfillment_type === 'vimeo' || formData.fulfillment_type === 'daily' || formData.fulfillment_type === 'hybrid'}
               className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
             />
             <Label htmlFor="is_session" className="font-normal cursor-pointer">Is Bookable Session?</Label>
@@ -216,6 +277,23 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
                 onChange={handleChange}
               />
               <p className="text-xs text-gray-500">Number of sessions included (e.g. 6 for a 6-week plan).</p>
+            </div>
+          )}
+
+          {(formData.fulfillment_type === 'vimeo' || formData.fulfillment_type === 'hybrid') && (
+            <div className="space-y-2">
+              <Label htmlFor="access_url">Vimeo Showcase URL</Label>
+              <Input
+                id="access_url"
+                name="access_url"
+                type="url"
+                value={formData.access_url}
+                onChange={handleChange}
+                placeholder="https://vimeo.com/showcase/..."
+              />
+              <p className="text-xs text-gray-500">
+                Optional per-service override for the embedded Vimeo library.
+              </p>
             </div>
           )}
 

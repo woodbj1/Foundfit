@@ -19,10 +19,10 @@ import {
   Settings,
   ToggleLeft,
   User,
-  XCircle,
 } from 'lucide-react'
 import AvailabilityModal from '@/components/trainer/availability-modal'
 import { toast } from 'sonner'
+import type { BookingPreference, UserRole } from '@/lib/types'
 
 const TIMEZONES = [
   'UTC',
@@ -41,8 +41,9 @@ type Profile = {
   id: string
   full_name: string
   email: string
-  booking_preference: string | null
-  role: string
+  booking_preference: BookingPreference | null
+  role: UserRole
+  timezone?: string
 }
 
 type BookingRow = {
@@ -64,6 +65,9 @@ type BookingQueryRow = Omit<BookingRow, 'client'> & {
 type TrainerRecord = {
   id: string
   user_id: string
+  google_calendar_connected_at: string | null
+  google_calendar_email: string | null
+  onboarding_completed_at: string | null
 }
 
 type Availability = {
@@ -75,7 +79,7 @@ type Availability = {
 
 export default function TrainerDashboardPage() {
   const router = useRouter()
-  const supabase = createClient()
+  const [supabase] = useState(() => createClient())
 
   const [user, setUser] = useState<{ id: string } | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -94,22 +98,22 @@ export default function TrainerDashboardPage() {
     try {
       const { data: profileData } = await supabase
         .from('profiles')
-        .select('id, full_name, email, booking_preference, role')
+        .select('id, full_name, email, booking_preference, role, timezone')
         .eq('id', userId)
         .single()
 
-      setProfile(profileData)
+      setProfile(profileData as Profile | null)
       if (profileData?.booking_preference) {
         setBookingPref(profileData.booking_preference)
       }
 
       const { data: trainerData } = await supabase
         .from('trainers')
-        .select('id, user_id')
+        .select('id, user_id, google_calendar_connected_at, google_calendar_email, onboarding_completed_at')
         .eq('user_id', userId)
         .single()
 
-      setTrainer(trainerData)
+      setTrainer(trainerData as TrainerRecord | null)
 
       if (!trainerData) {
         setPendingBookings([])
@@ -149,8 +153,8 @@ export default function TrainerDashboardPage() {
       setPendingBookings(normalizeBookings(pendingData as BookingQueryRow[] | null))
       setConfirmedSessions(normalizeBookings(confirmedData as BookingQueryRow[] | null))
       setAvailability((availabilityData as Availability[]) || [])
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err)
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error)
       toast.error('Failed to load dashboard data.')
     } finally {
       setLoading(false)
@@ -185,8 +189,8 @@ export default function TrainerDashboardPage() {
       if (!res.ok) throw new Error(data.error || 'Failed to approve booking.')
       toast.success('Booking approved and client notified.')
       if (user) await fetchData(user.id)
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to approve booking.')
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to approve booking.')
     } finally {
       setProcessingId(null)
     }
@@ -204,8 +208,8 @@ export default function TrainerDashboardPage() {
       if (!res.ok) throw new Error(data.error || 'Failed to decline booking.')
       toast.success('Booking declined.')
       if (user) await fetchData(user.id)
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to decline booking.')
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to decline booking.')
     } finally {
       setProcessingId(null)
     }
@@ -469,22 +473,33 @@ export default function TrainerDashboardPage() {
                   Google Calendar Settings
                 </CardTitle>
                 <CardDescription>
-                  Timezone is wired up. Calendar connect/sync still needs a fuller end-to-end pass.
+                  Your personal Google Calendar powers busy-slot checks and approved booking events.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50 border-gray-200">
+                <div className={`flex items-center justify-between p-4 rounded-lg border ${trainer?.google_calendar_connected_at ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
                   <div>
                     <h4 className="font-semibold text-gray-900">Calendar integration status</h4>
-                    <p className="text-sm text-gray-500">Backend calendar flow still needs final verification.</p>
+                    <p className="text-sm text-gray-500">
+                      {trainer?.google_calendar_connected_at
+                        ? `Connected as ${trainer.google_calendar_email || 'your primary Google Calendar'}.`
+                        : 'Connect your Google Calendar to block off busy time and sync approved bookings.'}
+                    </p>
                   </div>
-                  <Badge variant="secondary">Needs verification</Badge>
+                  <div className="flex items-center gap-3">
+                    <Badge variant={trainer?.google_calendar_connected_at ? 'default' : 'secondary'}>
+                      {trainer?.google_calendar_connected_at ? 'Connected' : 'Setup required'}
+                    </Badge>
+                    <Button variant="outline" size="sm" onClick={() => router.push('/trainer-setup')}>
+                      {trainer?.google_calendar_connected_at ? 'Reconnect' : 'Finish setup'}
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-700">Your Timezone</label>
                   <Select
-                    value={'America/New_York'}
+                    value={profile?.timezone || 'America/New_York'}
                     onValueChange={handleTimezoneChange}
                     disabled={isUpdatingTimezone}
                   >

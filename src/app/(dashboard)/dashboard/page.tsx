@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
@@ -290,7 +290,7 @@ export default async function ClientDashboard() {
                           {format(new Date(plan.created_at), 'MMMM d, yyyy')}
                         </p>
                       </div>
-                      <a href={plan.file_url} target="_blank" rel="noopener noreferrer">
+                      <a href={`/api/meal-plans/${plan.id}/download`} target="_blank" rel="noopener noreferrer">
                         <Button variant="outline" size="sm" className="gap-2">
                           <Download className="h-3.5 w-3.5" />
                           Download

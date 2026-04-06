@@ -1,32 +1,32 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
+import { SITE, SITE_KEYWORDS } from '@/lib/site-config'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: {
-    default: 'Foundation Fitness | Personal Training in Acworth, GA',
-    template: '%s | Foundation Fitness',
+    default: `${SITE.name} | ${SITE.tagline}`,
+    template: `%s | ${SITE.name}`,
   },
-  description:
-    'Transform your fitness journey with Foundation Fitness. Personalized training for women, flexible scheduling, and expert coaching in Acworth, GA.',
-  keywords: ['personal training', 'fitness', 'Acworth GA', 'women fitness', 'meal plans', 'workout', 'trainer', 'Foundation Fitness'],
-  authors: [{ name: 'Foundation Fitness' }],
+  description: SITE.description,
+  keywords: [...SITE_KEYWORDS],
+  authors: [{ name: SITE.name }],
+  metadataBase: new URL(SITE.url),
   openGraph: {
-    title: 'Foundation Fitness | Personal Training in Acworth, GA',
-    description:
-      'Transform your fitness journey with personalized training, flexible scheduling, and expert coaching.',
-    url: 'https://foundationfitness.com',
-    siteName: 'Foundation Fitness',
+    title: `${SITE.name} | ${SITE.tagline}`,
+    description: SITE.description,
+    url: SITE.url,
+    siteName: SITE.name,
     type: 'website',
     locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Foundation Fitness | Personal Training',
-    description: 'Expert personal training & custom meal plans in Acworth, GA.',
+    title: `${SITE.name} | Personal Training`,
+    description: SITE.description,
   },
   robots: {
     index: true,
