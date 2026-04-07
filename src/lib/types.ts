@@ -10,6 +10,7 @@ export type SubscriptionStatus = 'active' | 'past_due' | 'cancelled' | 'expired'
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6
 export type BookingPreference = 'request_system' | 'instant_confirmation'
 export type FulfillmentType = 'booking' | 'daily' | 'vimeo' | 'hybrid'
+export type TrainerScheduleRuleType = 'work_hours' | 'blocked'
 
 export interface Profile {
   id: string
@@ -75,6 +76,18 @@ export interface AvailabilityBlock {
   day_of_week: DayOfWeek
   start_time: string // HH:MM format
   end_time: string // HH:MM format
+}
+
+export interface TrainerScheduleRule {
+  id: string
+  trainer_id: string
+  day_of_week: DayOfWeek
+  start_time: string // HH:MM format
+  end_time: string // HH:MM format
+  rule_type: TrainerScheduleRuleType
+  label?: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export interface Subscription {

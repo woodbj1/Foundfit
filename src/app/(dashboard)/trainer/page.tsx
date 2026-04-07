@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -11,23 +11,23 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Building2,
   Calendar,
+  CalendarClock,
   CheckCircle,
   Clock,
   List,
   LogOut,
   MapPin,
-  Plus,
   RefreshCw,
   Settings,
   ToggleLeft,
   User,
   Video,
 } from 'lucide-react'
-import AvailabilityModal from '@/components/trainer/availability-modal'
 import JoinDailyButton from '@/components/bookings/join-daily-button'
 import { getBookingLocationLabel, isVirtualLocation } from '@/lib/booking-display'
+import { formatScheduleTime, groupScheduleRulesByDay } from '@/lib/trainer-schedule'
 import { toast } from 'sonner'
-import type { BookingPreference, UserRole } from '@/lib/types'
+import type { BookingPreference, TrainerScheduleRule, UserRole } from '@/lib/types'
 
 const TIMEZONES = [
   'UTC',
@@ -39,8 +39,6 @@ const TIMEZONES = [
   'Europe/Paris',
   'Asia/Tokyo',
 ]
-
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 type Profile = {
   id: string
@@ -80,13 +78,6 @@ type TrainerRecord = {
   onboarding_completed_at: string | null
 }
 
-type Availability = {
-  id: string
-  day_of_week: number
-  start_time: string
-  end_time: string
-}
-
 export default function TrainerDashboardPage() {
   const router = useRouter()
   const [supabase] = useState(() => createClient())
@@ -96,13 +87,16 @@ export default function TrainerDashboardPage() {
   const [trainer, setTrainer] = useState<TrainerRecord | null>(null)
   const [pendingBookings, setPendingBookings] = useState<BookingRow[]>([])
   const [confirmedSessions, setConfirmedSessions] = useState<BookingRow[]>([])
-  const [availability, setAvailability] = useState<Availability[]>([])
+  const [scheduleRules, setScheduleRules] = useState<TrainerScheduleRule[]>([])
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [bookingPref, setBookingPref] = useState('request_system')
   const [updatingPref, setUpdatingPref] = useState(false)
   const [isUpdatingTimezone, setIsUpdatingTimezone] = useState(false)
-  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false)
+  const groupedSchedule = useMemo(
+    () => groupScheduleRulesByDay(scheduleRules),
+    [scheduleRules]
+  )
 
   const fetchData = useCallback(async (userId: string) => {
     try {
@@ -128,11 +122,22 @@ export default function TrainerDashboardPage() {
       if (!trainerData) {
         setPendingBookings([])
         setConfirmedSessions([])
-        setAvailability([])
+        setScheduleRules([])
         return
       }
 
-      const [{ data: pendingData }, { data: confirmedData }, { data: availabilityData }] = await Promise.all([
+      const scheduleRulesPromise = fetch('/api/trainer/availability', { cache: 'no-store' })
+        .then(async (response) => {
+          if (!response.ok) {
+            return [] as TrainerScheduleRule[]
+          }
+
+          const payload = (await response.json()) as { data?: TrainerScheduleRule[] }
+          return payload.data ?? []
+        })
+        .catch(() => [] as TrainerScheduleRule[])
+
+      const [{ data: pendingData }, { data: confirmedData }, nextScheduleRules] = await Promise.all([
         supabase
           .from('bookings')
           .select('id, client_id, trainer_id, start_time, end_time, status, location_type, travel_address, notes, google_calendar_event_id, daily_room_url, client:profiles!bookings_client_id_fkey(full_name, email), service:services(name)')
@@ -146,12 +151,7 @@ export default function TrainerDashboardPage() {
           .eq('status', 'approved')
           .gte('start_time', new Date().toISOString())
           .order('start_time', { ascending: true }),
-        supabase
-          .from('availability_blocks')
-          .select('*')
-          .eq('trainer_id', trainerData.id)
-          .order('day_of_week', { ascending: true })
-          .order('start_time', { ascending: true }),
+        scheduleRulesPromise,
       ])
 
       const normalizeBookings = (rows: BookingQueryRow[] | null | undefined): BookingRow[] =>
@@ -163,7 +163,7 @@ export default function TrainerDashboardPage() {
 
       setPendingBookings(normalizeBookings(pendingData as BookingQueryRow[] | null))
       setConfirmedSessions(normalizeBookings(confirmedData as BookingQueryRow[] | null))
-      setAvailability((availabilityData as Availability[]) || [])
+      setScheduleRules(nextScheduleRules)
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
       toast.error('Failed to load dashboard data.')
@@ -430,42 +430,84 @@ export default function TrainerDashboardPage() {
         </TabsContent>
 
         <TabsContent value="schedule">
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-xl font-bold text-gray-800">Weekly Availability</h3>
-                <p className="text-sm text-gray-500 mt-1">These define the outer bounds of your schedule. Existing bookings and calendar conflicts are checked inside these windows.</p>
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800">Weekly Availability</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Set work hours to define when clients can book, then add blocks for lunch,
+                    appointments, school pickup, or other repeating unavailable time.
+                  </p>
+                </div>
+                <Button onClick={() => router.push('/trainer/availability')} size="sm" disabled={!trainer}>
+                  <CalendarClock className="mr-2 h-4 w-4" />
+                  Manage Availability
+                </Button>
               </div>
-              <Button onClick={() => setShowAvailabilityModal(true)} size="sm" disabled={!trainer}>
-                <Plus className="h-4 w-4 mr-2" /> Add Time Block
-              </Button>
-            </div>
-            {!trainer ? (
-              <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-                <p className="text-gray-500">You need a trainer profile before setting availability.</p>
-              </div>
-            ) : availability.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
-                <p className="text-gray-500 mb-4">You haven&apos;t set your schedule yet.</p>
-                <Button variant="outline" onClick={() => setShowAvailabilityModal(true)}>Set Availability</Button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {availability.map((slot) => (
-                  <div key={slot.id} className="flex items-center justify-between p-4 border rounded-lg hover:border-purple-200 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center text-purple-600">
-                        <Clock className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-gray-900">{DAY_NAMES[slot.day_of_week]}</p>
-                        <p className="text-sm text-gray-500">{slot.start_time} &ndash; {slot.end_time}</p>
+
+              {!trainer ? (
+                <div className="mt-6 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 py-12 text-center">
+                  <p className="text-gray-500">You need a trainer profile before setting availability.</p>
+                </div>
+              ) : scheduleRules.length === 0 ? (
+                <div className="mt-6 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 py-12 text-center">
+                  <p className="mb-4 text-gray-500">You haven&apos;t set work hours yet.</p>
+                  <Button variant="outline" onClick={() => router.push('/trainer/availability')}>
+                    Set Work Hours
+                  </Button>
+                </div>
+              ) : (
+                <div className="mt-6 space-y-3">
+                  {groupedSchedule.map(({ day, workHours, blocked }) => (
+                    <div
+                      key={day}
+                      className="rounded-xl border border-gray-100 p-4 transition-colors hover:border-purple-200"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="font-bold text-gray-900">{day}</p>
+                          {workHours.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {workHours.map((rule) => (
+                                <Badge
+                                  key={rule.id}
+                                  className="bg-purple-100 text-purple-700 hover:bg-purple-100"
+                                >
+                                  {formatScheduleTime(rule.start_time)} - {formatScheduleTime(rule.end_time)}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-sm text-gray-500">Unavailable for bookings</p>
+                          )}
+                        </div>
+
+                        <div className="min-w-[140px] text-left sm:text-right">
+                          <p className="text-xs uppercase tracking-wide text-gray-400">Blocks</p>
+                          <p className="mt-1 text-sm font-medium text-gray-700">
+                            {blocked.length === 0
+                              ? 'No blocks'
+                              : `${blocked.length} block${blocked.length === 1 ? '' : 's'}`}
+                          </p>
+                          {blocked.length > 0 ? (
+                            <p className="mt-1 text-xs text-gray-500">
+                              {blocked
+                                .slice(0, 2)
+                                .map((rule) =>
+                                  `${rule.label || 'Blocked'} (${formatScheduleTime(rule.start_time)} - ${formatScheduleTime(rule.end_time)})`
+                                )
+                                .join(', ')}
+                              {blocked.length > 2 ? '...' : ''}
+                            </p>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </TabsContent>
 
@@ -559,15 +601,6 @@ export default function TrainerDashboardPage() {
         </TabsContent>
       </Tabs>
 
-      {showAvailabilityModal && trainer && (
-        <AvailabilityModal
-          trainerId={trainer.id}
-          onClose={() => setShowAvailabilityModal(false)}
-          onSuccess={() => {
-            if (user) fetchData(user.id)
-          }}
-        />
-      )}
     </div>
   )
 }

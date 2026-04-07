@@ -10,8 +10,8 @@ export const DAYS_OF_WEEK = [
 
 export const DAY_ABBREVIATIONS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 
-export const TIME_SLOTS = Array.from({ length: 28 }, (_, i) => {
-  const hour = Math.floor(i / 2) + 5 // Start from 5 AM
+export const TIME_SLOTS = Array.from({ length: 48 }, (_, i) => {
+  const hour = Math.floor(i / 2)
   const minute = (i % 2) * 30
   const h = hour.toString().padStart(2, '0')
   const m = minute.toString().padStart(2, '0')

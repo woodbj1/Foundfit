@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getTrainerCalendarBusySlots } from '@/lib/google-calendar'
-import { addMinutes, areIntervalsOverlapping } from 'date-fns'
+import { addDays, addMinutes, areIntervalsOverlapping, format } from 'date-fns'
+import { sortScheduleRules } from '@/lib/trainer-schedule'
+import type { TrainerScheduleRule } from '@/lib/types'
 import {
   getCurrentDateInTimeZone,
   getDayOfWeekFromDateString,
@@ -27,13 +29,27 @@ export async function GET(request: NextRequest) {
 
   const dayOfWeek = getDayOfWeekFromDateString(dateStr)
 
-  // Get default duration from settings
-  const { data: durationSetting } = await supabase
+  const { data: bookingWindowSetting } = await supabase
     .from('settings')
-    .select('value')
-    .eq('key', 'default_duration')
-    .single()
-  let duration = parseInt(durationSetting?.value || '50')
+    .select('key, value')
+    .in('key', ['default_duration', 'booking_window_days'])
+
+  const defaultDurationSetting = bookingWindowSetting?.find((setting) => setting.key === 'default_duration')
+  const bookingWindowDaysSetting = bookingWindowSetting?.find((setting) => setting.key === 'booking_window_days')
+
+  const bookingWindowDays = Math.max(parseInt(bookingWindowDaysSetting?.value || '14', 10) || 14, 1)
+  const currentBookingDate = getCurrentDateInTimeZone('America/New_York')
+  const lastBookableDate = format(
+    addDays(new Date(`${currentBookingDate}T00:00:00Z`), bookingWindowDays - 1),
+    'yyyy-MM-dd'
+  )
+
+  if (dateStr < currentBookingDate || dateStr > lastBookableDate) {
+    return NextResponse.json({ slots: [] })
+  }
+
+  // Get default duration from settings
+  let duration = parseInt(defaultDurationSetting?.value || '50', 10)
 
   if (serviceId) {
     const { data: service } = await supabase
@@ -48,7 +64,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Find a trainer — if not specified, get the first active one
+  // Find a trainer. If one isn't specified, use the first active trainer.
   let targetTrainerId = trainerId
   if (!targetTrainerId) {
     const { data: firstTrainer } = await supabase
@@ -83,15 +99,40 @@ export async function GET(request: NextRequest) {
     : targetTrainer.profile
   const trainerTimezone = trainerProfile?.timezone || 'America/New_York'
 
-  // Get availability blocks for this day
-  const { data: blocks } = await supabase
-    .from('availability_blocks')
-    .select('*')
+  const { data: scheduleRulesData, error: scheduleRulesError } = await supabase
+    .from('trainer_schedule_rules')
+    .select('day_of_week, start_time, end_time, rule_type')
     .eq('trainer_id', targetTrainerId)
     .eq('day_of_week', dayOfWeek)
     .order('start_time')
 
-  if (!blocks || blocks.length === 0) {
+  let scheduleRules = (scheduleRulesData as TrainerScheduleRule[] | null) ?? []
+
+  if (scheduleRulesError || scheduleRules.length === 0) {
+    const { data: legacyBlocks } = await supabase
+      .from('availability_blocks')
+      .select('day_of_week, start_time, end_time')
+      .eq('trainer_id', targetTrainerId)
+      .eq('day_of_week', dayOfWeek)
+      .order('start_time')
+
+    scheduleRules = ((legacyBlocks ?? []).map((block) => ({
+      ...block,
+      trainer_id: targetTrainerId,
+      id: `legacy-${block.day_of_week}-${block.start_time}-${block.end_time}`,
+      rule_type: 'work_hours',
+      label: null,
+    })) as TrainerScheduleRule[])
+  }
+
+  const workHours = sortScheduleRules(
+    scheduleRules.filter((rule) => rule.rule_type === 'work_hours')
+  )
+  const blockedTimes = sortScheduleRules(
+    scheduleRules.filter((rule) => rule.rule_type === 'blocked')
+  )
+
+  if (workHours.length === 0) {
     return NextResponse.json({ slots: [] })
   }
 
@@ -117,9 +158,9 @@ export async function GET(request: NextRequest) {
   // Generate available slots
   const allSlots: { start: string; end: string }[] = []
 
-  for (const block of blocks) {
-    const [startH, startM] = block.start_time.split(':').map(Number)
-    const [endH, endM] = block.end_time.split(':').map(Number)
+  for (const workHoursRule of workHours) {
+    const [startH, startM] = workHoursRule.start_time.split(':').map(Number)
+    const [endH, endM] = workHoursRule.end_time.split(':').map(Number)
 
     let slotStart = zonedDateTimeToUtc(
       dateStr,
@@ -162,7 +203,14 @@ export async function GET(request: NextRequest) {
         })
       )
 
-      if (!conflictsWithBooking && !conflictsWithGcal) {
+      const conflictsWithBlockedTime = blockedTimes.some((blockedRule) =>
+        areIntervalsOverlapping(slotInterval, {
+          start: zonedDateTimeToUtc(dateStr, blockedRule.start_time, trainerTimezone),
+          end: zonedDateTimeToUtc(dateStr, blockedRule.end_time, trainerTimezone),
+        })
+      )
+
+      if (!conflictsWithBooking && !conflictsWithGcal && !conflictsWithBlockedTime) {
         allSlots.push({
           start: slotStart.toISOString(),
           end: slotEnd.toISOString(),
