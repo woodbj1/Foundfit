@@ -101,3 +101,33 @@ export function buildDailyJoinUrl(roomUrl: string, token: string) {
   joinUrl.searchParams.set('t', token)
   return joinUrl.toString()
 }
+
+export function getDailyJoinAvailability(
+  startTime: string,
+  endTime: string,
+  now = new Date()
+) {
+  const start = new Date(startTime)
+  const end = new Date(endTime)
+  const opensAt = new Date(start.getTime() - 30 * 60 * 1000)
+  const closesAt = new Date(end.getTime() + 2 * 60 * 60 * 1000)
+
+  if (now < opensAt) {
+    return {
+      canJoin: false,
+      message: 'This join link opens 30 minutes before the session starts.',
+    }
+  }
+
+  if (now > closesAt) {
+    return {
+      canJoin: false,
+      message: 'This Daily room has already closed.',
+    }
+  }
+
+  return {
+    canJoin: true,
+    message: null,
+  }
+}

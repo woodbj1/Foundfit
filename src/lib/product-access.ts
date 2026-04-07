@@ -25,6 +25,13 @@ export type BookableServiceOption = {
   remainingSessions: number | null
 }
 
+export type LibraryAccessDetails = {
+  accessUrl: string
+  accessType: 'subscription' | 'pack'
+  service: ServiceLike
+  remainingSessions: number | null
+}
+
 export function normalizeFulfillmentType(
   fulfillmentType?: FulfillmentType | string | null
 ): FulfillmentType {
@@ -75,11 +82,28 @@ export function getActiveDigitalSubscriptions<T extends SubscriptionWithService>
   return subscriptions.filter((subscription) => !isSessionService(subscription.service))
 }
 
+export function getActiveLibrarySubscriptions<T extends SubscriptionWithService>(
+  subscriptions: ReadonlyArray<T> = []
+) {
+  return subscriptions.filter((subscription) => isVimeoLibraryService(subscription.service))
+}
+
 export function getActiveSessionPacks<T extends SessionPackWithService>(
   packs: ReadonlyArray<T> = []
 ) {
   return packs.filter(
     (pack) => isSessionService(pack.service) && remainingSessions(pack) > 0
+  )
+}
+
+export function getActiveLibraryPacks<T extends SessionPackWithService>(
+  packs: ReadonlyArray<T> = []
+) {
+  return packs.filter(
+    (pack) =>
+      isSessionService(pack.service) &&
+      isVimeoLibraryService(pack.service) &&
+      remainingSessions(pack) > 0
   )
 }
 
@@ -140,9 +164,45 @@ export function getLibraryAccessUrl(
   subscriptions: ReadonlyArray<SubscriptionWithService> = [],
   fallbackUrl?: string | null
 ) {
-  const libraryService = getActiveDigitalSubscriptions(subscriptions).find(
-    (subscription) => isVimeoLibraryService(subscription.service)
+  return getLibraryAccessDetails(subscriptions, [], fallbackUrl)?.accessUrl || null
+}
+
+export function getLibraryAccessDetails(
+  subscriptions: ReadonlyArray<SubscriptionWithService> = [],
+  packs: ReadonlyArray<SessionPackWithService> = [],
+  fallbackUrl?: string | null
+): LibraryAccessDetails | null {
+  const librarySubscription = getActiveLibrarySubscriptions(subscriptions).find(
+    (subscription) => subscription.service?.access_url || fallbackUrl
   )
 
-  return libraryService?.service?.access_url || fallbackUrl || null
+  if (librarySubscription?.service) {
+    const accessUrl = librarySubscription.service.access_url || fallbackUrl
+    if (accessUrl) {
+      return {
+        accessUrl,
+        accessType: 'subscription',
+        service: librarySubscription.service,
+        remainingSessions: null,
+      }
+    }
+  }
+
+  const libraryPack = getActiveLibraryPacks(packs).find(
+    (pack) => pack.service?.access_url || fallbackUrl
+  )
+
+  if (libraryPack?.service) {
+    const accessUrl = libraryPack.service.access_url || fallbackUrl
+    if (accessUrl) {
+      return {
+        accessUrl,
+        accessType: 'pack',
+        service: libraryPack.service,
+        remainingSessions: remainingSessions(libraryPack),
+      }
+    }
+  }
+
+  return null
 }

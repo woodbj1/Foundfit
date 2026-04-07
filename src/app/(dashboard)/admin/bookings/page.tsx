@@ -8,22 +8,25 @@ import { Button } from '@/components/ui/button'
 import { Badge, badgeVariants } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Check, X, Loader2, MapPin, Building2 } from 'lucide-react'
+import { Check, X, Loader2, MapPin, Building2, Video } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import JoinDailyButton from '@/components/bookings/join-daily-button'
+import { getBookingLocationLabel, isVirtualLocation } from '@/lib/booking-display'
 import { toast } from 'sonner'
 import { format } from 'date-fns'
-import type { Booking, BookingStatus, Profile, Trainer } from '@/lib/types'
+import type { Booking, BookingStatus, Profile, Service, Trainer } from '@/lib/types'
 
 type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>['variant']>
 type AdminBooking = Booking & {
   client?: Profile | null
   trainer?: (Trainer & { profile?: Profile | null }) | null
+  service?: Pick<Service, 'name'> | null
 }
 
 async function fetchAdminBookings(supabase: SupabaseClient): Promise<AdminBooking[]> {
   const { data } = await supabase
     .from('bookings')
-    .select('*, client:profiles!bookings_client_id_fkey(*), trainer:trainers(*, profile:profiles!trainers_user_id_fkey(*))')
+    .select('*, client:profiles!bookings_client_id_fkey(*), trainer:trainers(*, profile:profiles!trainers_user_id_fkey(*)), service:services(name)')
     .order('start_time', { ascending: false })
     .limit(200)
 
@@ -61,10 +64,12 @@ function BookingTable({
             <TableRow>
               <TableHead>Client</TableHead>
               <TableHead>Trainer</TableHead>
+              <TableHead>Service</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Time</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Join</TableHead>
               {showActions && <TableHead>Actions</TableHead>}
             </TableRow>
           </TableHeader>
@@ -73,15 +78,21 @@ function BookingTable({
               <TableRow key={booking.id}>
                 <TableCell className="font-medium">{booking.client?.full_name || '-'}</TableCell>
                 <TableCell>{booking.trainer?.profile?.full_name || '-'}</TableCell>
+                <TableCell>{booking.service?.name || '-'}</TableCell>
                 <TableCell>{format(new Date(booking.start_time), 'MMM d, yyyy')}</TableCell>
                 <TableCell>
                   {format(new Date(booking.start_time), 'h:mm a')} - {format(new Date(booking.end_time), 'h:mm a')}
                 </TableCell>
                 <TableCell>
-                  {booking.location_type === 'travel' ? (
+                  {isVirtualLocation(booking.location_type) ? (
+                    <span className="flex items-center gap-1 text-sm">
+                      <Video className="h-3.5 w-3.5" />
+                      Virtual
+                    </span>
+                  ) : booking.location_type === 'travel' ? (
                     <span className="flex items-center gap-1 text-sm">
                       <MapPin className="h-3.5 w-3.5" />
-                      Travel
+                      {getBookingLocationLabel(booking.location_type, booking.travel_address)}
                     </span>
                   ) : (
                     <span className="flex items-center gap-1 text-sm">
@@ -91,6 +102,13 @@ function BookingTable({
                   )}
                 </TableCell>
                 <TableCell>{statusBadge(booking.status)}</TableCell>
+                <TableCell>
+                  {booking.status === 'approved' && isVirtualLocation(booking.location_type) ? (
+                    <JoinDailyButton bookingId={booking.id} label="Join" />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">-</span>
+                  )}
+                </TableCell>
                 {showActions && (
                   <TableCell>
                     <div className="flex gap-1">

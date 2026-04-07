@@ -9,18 +9,23 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
+  Building2,
   Calendar,
   CheckCircle,
   Clock,
   List,
   LogOut,
+  MapPin,
   Plus,
   RefreshCw,
   Settings,
   ToggleLeft,
   User,
+  Video,
 } from 'lucide-react'
 import AvailabilityModal from '@/components/trainer/availability-modal'
+import JoinDailyButton from '@/components/bookings/join-daily-button'
+import { getBookingLocationLabel, isVirtualLocation } from '@/lib/booking-display'
 import { toast } from 'sonner'
 import type { BookingPreference, UserRole } from '@/lib/types'
 
@@ -53,13 +58,18 @@ type BookingRow = {
   start_time: string
   end_time: string
   status: 'pending' | 'approved' | 'declined' | 'cancelled' | 'completed'
+  location_type: 'gym' | 'travel' | 'virtual'
+  travel_address: string | null
   notes: string | null
   google_calendar_event_id: string | null
+  daily_room_url: string | null
+  service?: { name: string } | null
   client?: { full_name: string; email: string } | null
 }
 
 type BookingQueryRow = Omit<BookingRow, 'client'> & {
   client?: { full_name: string; email: string }[] | { full_name: string; email: string } | null
+  service?: { name: string }[] | { name: string } | null
 }
 
 type TrainerRecord = {
@@ -125,13 +135,13 @@ export default function TrainerDashboardPage() {
       const [{ data: pendingData }, { data: confirmedData }, { data: availabilityData }] = await Promise.all([
         supabase
           .from('bookings')
-          .select('id, client_id, trainer_id, start_time, end_time, status, notes, google_calendar_event_id, client:profiles!bookings_client_id_fkey(full_name, email)')
+          .select('id, client_id, trainer_id, start_time, end_time, status, location_type, travel_address, notes, google_calendar_event_id, daily_room_url, client:profiles!bookings_client_id_fkey(full_name, email), service:services(name)')
           .eq('trainer_id', trainerData.id)
           .eq('status', 'pending')
           .order('start_time', { ascending: true }),
         supabase
           .from('bookings')
-          .select('id, client_id, trainer_id, start_time, end_time, status, notes, google_calendar_event_id, client:profiles!bookings_client_id_fkey(full_name, email)')
+          .select('id, client_id, trainer_id, start_time, end_time, status, location_type, travel_address, notes, google_calendar_event_id, daily_room_url, client:profiles!bookings_client_id_fkey(full_name, email), service:services(name)')
           .eq('trainer_id', trainerData.id)
           .eq('status', 'approved')
           .gte('start_time', new Date().toISOString())
@@ -148,6 +158,7 @@ export default function TrainerDashboardPage() {
         (rows ?? []).map((row) => ({
           ...row,
           client: Array.isArray(row.client) ? row.client[0] : row.client,
+          service: Array.isArray(row.service) ? row.service[0] : row.service,
         }))
 
       setPendingBookings(normalizeBookings(pendingData as BookingQueryRow[] | null))
@@ -322,6 +333,27 @@ export default function TrainerDashboardPage() {
                         <p className="text-sm text-gray-500">
                           {new Date(booking.start_time).toLocaleDateString()} &bull; {new Date(booking.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                         </p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {booking.service?.name || 'Training Session'}
+                        </p>
+                        <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                          {isVirtualLocation(booking.location_type) ? (
+                            <>
+                              <Video className="h-3.5 w-3.5" />
+                              Virtual
+                            </>
+                          ) : booking.location_type === 'gym' ? (
+                            <>
+                              <Building2 className="h-3.5 w-3.5" />
+                              Studio
+                            </>
+                          ) : (
+                            <>
+                              <MapPin className="h-3.5 w-3.5" />
+                              {getBookingLocationLabel(booking.location_type, booking.travel_address)}
+                            </>
+                          )}
+                        </p>
                         {booking.notes && (
                           <p className="text-xs text-gray-500 mt-1 italic">&ldquo;{booking.notes}&rdquo;</p>
                         )}
@@ -374,8 +406,15 @@ export default function TrainerDashboardPage() {
                           {new Date(session.end_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                         </span>
                       </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {session.service?.name || 'Training Session'}
+                        {isVirtualLocation(session.location_type) ? ' • Virtual session' : ''}
+                      </p>
                     </div>
                     <div className="flex items-center gap-3">
+                      {isVirtualLocation(session.location_type) ? (
+                        <JoinDailyButton bookingId={session.id} />
+                      ) : null}
                       {session.google_calendar_event_id && (
                         <span className="text-xs text-gray-400 flex items-center">
                           <CheckCircle className="w-3 h-3 mr-1 text-blue-400" /> Calendar

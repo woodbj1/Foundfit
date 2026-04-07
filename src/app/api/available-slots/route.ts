@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getTrainerCalendarBusySlots } from '@/lib/google-calendar'
 import { addMinutes, areIntervalsOverlapping } from 'date-fns'
+import {
+  getCurrentDateInTimeZone,
+  getDayOfWeekFromDateString,
+  getUtcRangeForDateInTimeZone,
+  zonedDateTimeToUtc,
+} from '@/lib/timezone'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -19,8 +25,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const date = new Date(dateStr + 'T00:00:00')
-  const dayOfWeek = date.getDay()
+  const dayOfWeek = getDayOfWeekFromDateString(dateStr)
 
   // Get default duration from settings
   const { data: durationSetting } = await supabase
@@ -65,13 +70,18 @@ export async function GET(request: NextRequest) {
 
   const { data: targetTrainer } = await supabase
     .from('trainers')
-    .select('id, onboarding_completed_at')
+    .select('id, onboarding_completed_at, profile:profiles!trainers_user_id_fkey(timezone)')
     .eq('id', targetTrainerId)
     .maybeSingle()
 
   if (!targetTrainer?.onboarding_completed_at) {
     return NextResponse.json({ slots: [], trainer_id: targetTrainerId })
   }
+
+  const trainerProfile = Array.isArray(targetTrainer.profile)
+    ? targetTrainer.profile[0]
+    : targetTrainer.profile
+  const trainerTimezone = trainerProfile?.timezone || 'America/New_York'
 
   // Get availability blocks for this day
   const { data: blocks } = await supabase
@@ -86,10 +96,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Get existing bookings for this day
-  const dayStart = new Date(date)
-  dayStart.setHours(0, 0, 0, 0)
-  const dayEnd = new Date(date)
-  dayEnd.setHours(23, 59, 59, 999)
+  const { start: dayStart, end: dayEnd } = getUtcRangeForDateInTimeZone(dateStr, trainerTimezone)
 
   const { data: existingBookings } = await supabase
     .from('bookings')
@@ -97,12 +104,12 @@ export async function GET(request: NextRequest) {
     .eq('trainer_id', targetTrainerId)
     .in('status', ['pending', 'approved'])
     .gte('start_time', dayStart.toISOString())
-    .lte('start_time', dayEnd.toISOString())
+    .lt('start_time', dayEnd.toISOString())
 
   // Get Google Calendar busy slots
   let gcalBusy: { start: string; end: string }[] = []
   try {
-    gcalBusy = await getTrainerCalendarBusySlots(date, targetTrainerId)
+    gcalBusy = await getTrainerCalendarBusySlots(dateStr, targetTrainerId, trainerTimezone)
   } catch (error) {
     console.error('Google Calendar error (continuing without):', error)
   }
@@ -114,15 +121,21 @@ export async function GET(request: NextRequest) {
     const [startH, startM] = block.start_time.split(':').map(Number)
     const [endH, endM] = block.end_time.split(':').map(Number)
 
-    let slotStart = new Date(date)
-    slotStart.setHours(startH, startM, 0, 0)
+    let slotStart = zonedDateTimeToUtc(
+      dateStr,
+      `${String(startH).padStart(2, '0')}:${String(startM).padStart(2, '0')}`,
+      trainerTimezone
+    )
 
-    const blockEnd = new Date(date)
-    blockEnd.setHours(endH, endM, 0, 0)
+    const blockEnd = zonedDateTimeToUtc(
+      dateStr,
+      `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`,
+      trainerTimezone
+    )
 
     // Don't show past slots for today
     const now = new Date()
-    if (slotStart < now && date.toDateString() === now.toDateString()) {
+    if (slotStart < now && dateStr === getCurrentDateInTimeZone(trainerTimezone)) {
       // Move slot start to next available time after now
       while (slotStart < now) {
         slotStart = addMinutes(slotStart, duration)

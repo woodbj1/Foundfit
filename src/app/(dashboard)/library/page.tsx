@@ -3,13 +3,14 @@ import { redirect } from 'next/navigation'
 import { AlertCircle, ExternalLink, Library, PlayCircle } from 'lucide-react'
 
 import { createClient } from '@/lib/supabase/server'
-import { getLibraryAccessUrl } from '@/lib/product-access'
+import { getLibraryAccessDetails } from '@/lib/product-access'
 import { getVimeoOEmbed } from '@/lib/vimeo'
-import type { Service, Subscription } from '@/lib/types'
+import type { Service, SessionPack, Subscription } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 type LibrarySubscription = Subscription & { service?: Service | null }
+type LibraryPack = SessionPack & { service?: Service | null }
 
 const fallbackLibraryUrl = process.env.VIMEO_LIBRARY_URL || null
 
@@ -31,10 +32,28 @@ export default async function LibraryPage({
     .eq('status', 'active')
     .order('created_at', { ascending: false })
 
-  const accessUrl = getLibraryAccessUrl(
-    (subscriptions as LibrarySubscription[] | null) ?? [],
+  const { data: packs } = await supabase
+    .from('session_packs')
+    .select('*, service:services(*)')
+    .eq('client_id', user.id)
+    .order('purchased_at', { ascending: false })
+
+  const normalizedSubscriptions = ((subscriptions as LibrarySubscription[] | null) ?? []).map((subscription) => ({
+    ...subscription,
+    service: Array.isArray(subscription.service) ? subscription.service[0] : subscription.service,
+  }))
+
+  const normalizedPacks = ((packs as LibraryPack[] | null) ?? []).map((pack) => ({
+    ...pack,
+    service: Array.isArray(pack.service) ? pack.service[0] : pack.service,
+  }))
+
+  const accessDetails = getLibraryAccessDetails(
+    normalizedSubscriptions,
+    normalizedPacks,
     fallbackLibraryUrl
   )
+  const accessUrl = accessDetails?.accessUrl ?? null
 
   let embedHtml: string | null = null
   let embedError: string | null = null
@@ -79,10 +98,24 @@ export default async function LibraryPage({
           <CardHeader>
             <CardTitle>Watch now</CardTitle>
             <CardDescription>
-              The embedded player pulls from your active Vimeo-enabled service.
+              {accessDetails?.accessType === 'pack'
+                ? `Library access is bundled with ${accessDetails.service.name} while you still have sessions remaining.`
+                : `The embedded player pulls from your active ${accessDetails?.service.name || 'Vimeo-enabled'} subscription.`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {accessDetails ? (
+              <div className="rounded-xl border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                <p className="font-medium text-foreground">{accessDetails.service.name}</p>
+                <p className="mt-1">
+                  Access type: {accessDetails.accessType === 'subscription' ? 'Subscription' : 'Session pack'}
+                  {accessDetails.remainingSessions != null
+                    ? ` • ${accessDetails.remainingSessions} session${accessDetails.remainingSessions === 1 ? '' : 's'} remaining`
+                    : ''}
+                </p>
+              </div>
+            ) : null}
+
             {embedHtml ? (
               <div
                 className="overflow-hidden rounded-xl border bg-black [&_iframe]:aspect-video [&_iframe]:w-full"

@@ -34,6 +34,40 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
 
+function hasConfiguredValue(value: string | undefined) {
+  return Boolean(value && value.trim() && value.trim().toLowerCase() !== 'placeholder')
+}
+
+function getServiceValidationError(options: {
+  category?: string
+  fulfillmentType: string
+  isActive: boolean
+  accessUrl: string | null
+}) {
+  if (options.fulfillmentType === 'vimeo' && options.category !== 'subscription') {
+    return 'Vimeo-only products must use the Subscription category until one-time digital entitlements are supported.'
+  }
+
+  if (
+    options.isActive &&
+    (options.fulfillmentType === 'daily' || options.fulfillmentType === 'hybrid') &&
+    !hasConfiguredValue(process.env.DAILY_API_KEY)
+  ) {
+    return 'Daily-powered services cannot be activated until DAILY_API_KEY is configured.'
+  }
+
+  if (
+    options.isActive &&
+    (options.fulfillmentType === 'vimeo' || options.fulfillmentType === 'hybrid') &&
+    !options.accessUrl &&
+    !hasConfiguredValue(process.env.VIMEO_LIBRARY_URL)
+  ) {
+    return 'Video-library services need a per-service access URL or a global VIMEO_LIBRARY_URL before they can go live.'
+  }
+
+  return null
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
@@ -54,6 +88,7 @@ export async function POST(req: NextRequest) {
       category,
       is_popular,
       is_session,
+      is_active,
       session_limit,
       fulfillment_type,
       access_url,
@@ -73,8 +108,19 @@ export async function POST(req: NextRequest) {
     const normalizedSessionLimit = normalizedIsSession ? session_limit : null
     const normalizedDuration = normalizedIsSession ? duration_minutes : 0
     const normalizedAccessUrl = normalizeAccessUrl(access_url)
+    const normalizedIsActive = is_active !== false
     const serviceType = deriveServiceType(category, normalizedIsSession, normalizedSessionLimit)
     const amountCents = Math.round(Number(price) * 100)
+
+    const validationError = getServiceValidationError({
+      category,
+      fulfillmentType,
+      isActive: normalizedIsActive,
+      accessUrl: normalizedAccessUrl,
+    })
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 })
+    }
 
     const stripe = getStripe()
     const stripeProduct = await stripe.products.create({
@@ -116,7 +162,7 @@ export async function POST(req: NextRequest) {
       duration_minutes: normalizedDuration,
       fulfillment_type: fulfillmentType,
       access_url: normalizedAccessUrl,
-      is_active: true,
+      is_active: normalizedIsActive,
       stripe_product_id: stripeProduct.id,
       stripe_price_id: stripePrice.id,
     }).select().single()
@@ -151,6 +197,7 @@ export async function PUT(req: NextRequest) {
       category,
       is_popular,
       is_session,
+      is_active,
       session_limit,
       fulfillment_type,
       access_url,
@@ -168,8 +215,19 @@ export async function PUT(req: NextRequest) {
     const normalizedSessionLimit = normalizedIsSession ? session_limit : null
     const normalizedDuration = normalizedIsSession ? duration_minutes : 0
     const normalizedAccessUrl = normalizeAccessUrl(access_url)
+    const normalizedIsActive = is_active !== false
     const serviceType = deriveServiceType(category, normalizedIsSession, normalizedSessionLimit)
     const amountCents = Math.round(Number(price) * 100)
+
+    const validationError = getServiceValidationError({
+      category,
+      fulfillmentType,
+      isActive: normalizedIsActive,
+      accessUrl: normalizedAccessUrl,
+    })
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 })
+    }
 
     const { data: existing, error: fetchErr } = await supabase
       .from('services')
@@ -227,6 +285,7 @@ export async function PUT(req: NextRequest) {
       duration_minutes: normalizedDuration,
       fulfillment_type: fulfillmentType,
       access_url: normalizedAccessUrl,
+      is_active: normalizedIsActive,
     }).eq('id', id).select().single()
 
     if (error) throw error

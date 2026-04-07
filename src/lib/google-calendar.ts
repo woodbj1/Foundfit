@@ -3,6 +3,7 @@ import 'server-only'
 import { google } from 'googleapis'
 import { SITE } from '@/lib/site-config'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { getUtcRangeForDateInTimeZone } from '@/lib/timezone'
 import type { TrainerCalendarConnection } from '@/lib/types'
 
 const GOOGLE_CALENDAR_SCOPES = [
@@ -126,7 +127,7 @@ export async function exchangeTrainerGoogleCode(code: string) {
 }
 
 export async function getTrainerCalendarBusySlots(
-  date: Date,
+  date: string,
   trainerId: string,
   timeZone = 'America/New_York'
 ): Promise<{ start: string; end: string }[]> {
@@ -136,11 +137,7 @@ export async function getTrainerCalendarBusySlots(
   }
 
   const resolvedCalendarId = getCalendarId(connection.google_calendar_id)
-  const startOfDay = new Date(date)
-  startOfDay.setHours(0, 0, 0, 0)
-
-  const endOfDay = new Date(date)
-  endOfDay.setHours(23, 59, 59, 999)
+  const { start: startOfDay, end: endOfDay } = getUtcRangeForDateInTimeZone(date, timeZone)
 
   const response = await getCalendarApi(connection).freebusy.query({
     requestBody: {

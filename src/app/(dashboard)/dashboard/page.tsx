@@ -1,31 +1,44 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
+import { format } from 'date-fns'
 import {
+  AlertCircle,
   Calendar,
+  CheckCircle2,
   Clock,
   CreditCard,
-  Dumbbell,
-  Package,
   Download,
-  UtensilsCrossed,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  ShoppingCart,
+  Dumbbell,
   ExternalLink,
+  Library,
+  Package,
+  ShoppingCart,
+  UtensilsCrossed,
+  XCircle,
 } from 'lucide-react'
-import Link from 'next/link'
-import { formatPrice } from '@/lib/stripe'
-import { format } from 'date-fns'
+
+import JoinDailyButton from '@/components/bookings/join-daily-button'
 import BillingPortalButton from '@/components/nav/billing-portal-button'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
+import { isVirtualLocation } from '@/lib/booking-display'
+import {
+  getActiveSessionPacks,
+  getActiveSessionSubscriptions,
+  getLibraryAccessDetails,
+  getPrimarySessionSubscription,
+} from '@/lib/product-access'
+import { formatPrice } from '@/lib/stripe'
+import { createClient } from '@/lib/supabase/server'
 
 export default async function ClientDashboard() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
   if (!user) redirect('/login')
 
   const { data: profile } = await supabase
@@ -34,41 +47,56 @@ export default async function ClientDashboard() {
     .eq('id', user.id)
     .single()
 
-  // Active subscription
-  const { data: subscription } = await supabase
+  const { data: subscriptions } = await supabase
     .from('subscriptions')
     .select('*, service:services(*)')
     .eq('client_id', user.id)
     .eq('status', 'active')
-    .single()
+    .order('created_at', { ascending: false })
 
-  // All session packs
   const { data: packs } = await supabase
     .from('session_packs')
     .select('*, service:services(*)')
     .eq('client_id', user.id)
     .order('purchased_at', { ascending: false })
 
-  const activePacks = packs?.filter(p => p.used_sessions < p.total_sessions) ?? []
-  const totalSessionsLeft = activePacks.reduce((sum, p) => sum + (p.total_sessions - p.used_sessions), 0)
+  const normalizedSubscriptions = (subscriptions ?? []).map((subscription) => ({
+    ...subscription,
+    service: Array.isArray(subscription.service) ? subscription.service[0] : subscription.service,
+  }))
 
-  const hasActiveAccess = !!subscription || activePacks.length > 0
+  const normalizedPacks = (packs ?? []).map((pack) => ({
+    ...pack,
+    service: Array.isArray(pack.service) ? pack.service[0] : pack.service,
+  }))
 
-  // Upcoming (pending + approved)
+  const sessionSubscriptions = getActiveSessionSubscriptions(normalizedSubscriptions)
+  const primarySessionSubscription = getPrimarySessionSubscription(normalizedSubscriptions)
+  const activePacks = getActiveSessionPacks(normalizedPacks)
+  const totalSessionsLeft = activePacks.reduce(
+    (sum, pack) => sum + (pack.total_sessions - pack.used_sessions),
+    0
+  )
+  const hasBookableAccess = sessionSubscriptions.length > 0 || activePacks.length > 0
+  const libraryAccess = getLibraryAccessDetails(
+    normalizedSubscriptions,
+    normalizedPacks,
+    process.env.VIMEO_LIBRARY_URL || null
+  )
+
   const now = new Date().toISOString()
   const { data: upcomingBookings } = await supabase
     .from('bookings')
-    .select('*, trainer:trainers(*, profile:profiles(*))')
+    .select('*, trainer:trainers(*, profile:profiles(*)), service:services(name)')
     .eq('client_id', user.id)
     .in('status', ['approved', 'pending'])
     .gte('start_time', now)
     .order('start_time', { ascending: true })
     .limit(5)
 
-  const pendingCount = upcomingBookings?.filter(b => b.status === 'pending').length ?? 0
-  const confirmedCount = upcomingBookings?.filter(b => b.status === 'approved').length ?? 0
+  const pendingCount = upcomingBookings?.filter((booking) => booking.status === 'pending').length ?? 0
+  const confirmedCount = upcomingBookings?.filter((booking) => booking.status === 'approved').length ?? 0
 
-  // Cancelled sessions (last 30)
   const { data: cancelledBookings } = await supabase
     .from('bookings')
     .select('start_time, end_time')
@@ -77,25 +105,22 @@ export default async function ClientDashboard() {
     .order('start_time', { ascending: false })
     .limit(3)
 
-  // Meal plans
   const { data: mealPlans } = await supabase
     .from('meal_plans')
     .select('*')
     .eq('client_id', user.id)
     .order('created_at', { ascending: false })
 
-  // Active services for browsing
   const { data: services } = await supabase
     .from('services')
     .select('*')
     .eq('is_active', true)
     .order('price', { ascending: true })
 
-  const sessionServices = services?.filter(s => s.type !== 'meal_plan') ?? []
+  const sessionServices = services?.filter((service) => service.is_session !== false) ?? []
 
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold">
@@ -106,15 +131,14 @@ export default async function ClientDashboard() {
         <BillingPortalButton />
       </div>
 
-      {/* Access Status Banner */}
-      {!hasActiveAccess && (
+      {!hasBookableAccess && (
         <Card className="border-amber-200 bg-amber-50">
           <CardContent className="pt-6 flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
             <div>
-              <p className="font-medium text-amber-900">No active package</p>
+              <p className="font-medium text-amber-900">No active booking package</p>
               <p className="text-sm text-amber-700 mt-0.5">
-                You don&apos;t have an active subscription or session pack. Purchase one to book sessions.
+                You don&apos;t have an active subscription or session pack for live training yet.
               </p>
               <Link href="/account">
                 <Button size="sm" className="mt-3 gap-2 bg-amber-600 hover:bg-amber-700 text-white">
@@ -127,7 +151,6 @@ export default async function ClientDashboard() {
         </Card>
       )}
 
-      {/* Stats Row */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="pt-6">
@@ -138,7 +161,13 @@ export default async function ClientDashboard() {
               <div>
                 <p className="text-sm text-muted-foreground">Active Plan</p>
                 <p className="text-lg font-semibold truncate max-w-[140px]">
-                  {subscription ? subscription.service?.name : activePacks.length > 0 ? 'Session Pack' : 'None'}
+                  {primarySessionSubscription
+                    ? primarySessionSubscription.service?.name
+                    : activePacks.length > 0
+                      ? 'Session Pack'
+                      : libraryAccess
+                        ? libraryAccess.service.name
+                        : 'None'}
                 </p>
               </div>
             </div>
@@ -154,7 +183,7 @@ export default async function ClientDashboard() {
               <div>
                 <p className="text-sm text-muted-foreground">Sessions Left</p>
                 <p className="text-lg font-semibold">
-                  {subscription ? '∞ Unlimited' : totalSessionsLeft > 0 ? totalSessionsLeft : '0'}
+                  {primarySessionSubscription ? 'Unlimited' : totalSessionsLeft > 0 ? totalSessionsLeft : '0'}
                 </p>
               </div>
             </div>
@@ -191,7 +220,6 @@ export default async function ClientDashboard() {
       </div>
 
       <div className="grid lg:grid-cols-3 gap-8">
-        {/* Upcoming Sessions */}
         <div className="lg:col-span-2 space-y-6">
           <Card>
             <CardHeader>
@@ -206,29 +234,38 @@ export default async function ClientDashboard() {
                   {upcomingBookings.map((booking) => (
                     <div
                       key={booking.id}
-                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                      className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div>
                         <p className="font-medium text-sm">
                           {format(new Date(booking.start_time), 'EEEE, MMM d')}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(booking.start_time), 'h:mm a')} –{' '}
+                          {format(new Date(booking.start_time), 'h:mm a')} -{' '}
                           {format(new Date(booking.end_time), 'h:mm a')}
-                          {booking.trainer?.profile?.full_name && (
+                          {booking.trainer?.profile?.full_name ? (
                             <> &middot; {booking.trainer.profile.full_name}</>
-                          )}
+                          ) : null}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {booking.service?.name || 'Training Session'}
+                          {isVirtualLocation(booking.location_type) ? ' • Virtual session' : ''}
                         </p>
                       </div>
-                      <Badge variant={booking.status === 'approved' ? 'default' : 'secondary'}>
-                        {booking.status === 'approved' ? 'Confirmed' : 'Pending'}
-                      </Badge>
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <Badge variant={booking.status === 'approved' ? 'default' : 'secondary'}>
+                          {booking.status === 'approved' ? 'Confirmed' : 'Pending'}
+                        </Badge>
+                        {booking.status === 'approved' && isVirtualLocation(booking.location_type) ? (
+                          <JoinDailyButton bookingId={booking.id} />
+                        ) : null}
+                      </div>
                     </div>
                   ))}
                   <div className="pt-1">
                     <Link href="/sessions">
                       <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground">
-                        View all sessions →
+                        View all sessions {'>'}
                       </Button>
                     </Link>
                   </div>
@@ -237,18 +274,17 @@ export default async function ClientDashboard() {
                 <div className="text-center py-8">
                   <Dumbbell className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
                   <p className="text-muted-foreground">No upcoming sessions</p>
-                  {hasActiveAccess && (
+                  {hasBookableAccess ? (
                     <Link href="/book">
-                      <Button variant="link" className="mt-1">Book your first session →</Button>
+                      <Button variant="link" className="mt-1">Book your first session {'>'}</Button>
                     </Link>
-                  )}
+                  ) : null}
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Cancelled Sessions (if any) */}
-          {cancelledBookings && cancelledBookings.length > 0 && (
+          {cancelledBookings && cancelledBookings.length > 0 ? (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2 text-muted-foreground">
@@ -258,10 +294,10 @@ export default async function ClientDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {cancelledBookings.map((booking, i) => (
-                    <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+                  {cancelledBookings.map((booking, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
                       <p className="text-sm text-muted-foreground">
-                        {format(new Date(booking.start_time), 'EEEE, MMM d · h:mm a')}
+                        {format(new Date(booking.start_time), 'EEEE, MMM d - h:mm a')}
                       </p>
                       <Badge variant="destructive" className="text-xs">Cancelled</Badge>
                     </div>
@@ -269,10 +305,9 @@ export default async function ClientDashboard() {
                 </div>
               </CardContent>
             </Card>
-          )}
+          ) : null}
 
-          {/* Meal Plans */}
-          {mealPlans && mealPlans.length > 0 && (
+          {mealPlans && mealPlans.length > 0 ? (
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -301,37 +336,35 @@ export default async function ClientDashboard() {
                 </div>
               </CardContent>
             </Card>
-          )}
+          ) : null}
         </div>
 
-        {/* Right column: subscriptions + quick actions */}
         <div className="space-y-6">
-          {/* Current Subscription */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">Current Subscription</CardTitle>
+              <CardTitle className="text-base">Current Access</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {subscription ? (
+              {primarySessionSubscription ? (
                 <div className="p-3 bg-primary/5 rounded-lg border border-primary/20">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="font-semibold text-sm">{subscription.service?.name}</p>
+                    <p className="font-semibold text-sm">{primarySessionSubscription.service?.name}</p>
                     <Badge>Active</Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    {formatPrice(subscription.service?.price ?? 0)}/month
+                    {formatPrice(primarySessionSubscription.service?.price ?? 0)}/month
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Renews {format(new Date(subscription.current_period_end), 'MMM d, yyyy')}
+                    Renews {format(new Date(primarySessionSubscription.current_period_end), 'MMM d, yyyy')}
                   </p>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No active subscription</p>
+                <p className="text-sm text-muted-foreground">No active live-training subscription</p>
               )}
 
-              {activePacks.length > 0 && (
+              {activePacks.length > 0 ? (
                 <>
-                  {subscription && <Separator />}
+                  {primarySessionSubscription ? <Separator /> : null}
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Session Packs</p>
                     {activePacks.map((pack) => (
@@ -344,20 +377,36 @@ export default async function ClientDashboard() {
                     ))}
                   </div>
                 </>
-              )}
+              ) : null}
 
-              {!subscription && activePacks.length === 0 && (
+              {libraryAccess ? (
+                <>
+                  {primarySessionSubscription || activePacks.length > 0 ? <Separator /> : null}
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Video Library</p>
+                    <div className="rounded-lg bg-muted/50 p-2.5">
+                      <p className="text-sm font-medium">{libraryAccess.service.name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {libraryAccess.accessType === 'subscription'
+                          ? 'Subscription access is active.'
+                          : `${libraryAccess.remainingSessions || 0} session${libraryAccess.remainingSessions === 1 ? '' : 's'} remaining with library access.`}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+
+              {!primarySessionSubscription && activePacks.length === 0 && !libraryAccess ? (
                 <Link href="/account">
                   <Button variant="outline" size="sm" className="w-full gap-2 mt-1">
                     <ShoppingCart className="h-4 w-4" />
                     Buy a Package
                   </Button>
                 </Link>
-              )}
+              ) : null}
             </CardContent>
           </Card>
 
-          {/* Quick Actions */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Quick Actions</CardTitle>
@@ -367,7 +416,7 @@ export default async function ClientDashboard() {
                 <Button
                   className="w-full justify-start gap-3"
                   size="default"
-                  disabled={!hasActiveAccess}
+                  disabled={!hasBookableAccess}
                 >
                   <Calendar className="h-4 w-4" />
                   Book a Session
@@ -379,21 +428,28 @@ export default async function ClientDashboard() {
                   View All Sessions
                 </Button>
               </Link>
-              {mealPlans && mealPlans.length > 0 && (
+              {libraryAccess ? (
+                <Link href="/library" className="block">
+                  <Button variant="outline" className="w-full justify-start gap-3" size="default">
+                    <Library className="h-4 w-4" />
+                    Open Video Library
+                  </Button>
+                </Link>
+              ) : null}
+              {mealPlans && mealPlans.length > 0 ? (
                 <Link href="/meal-plans" className="block">
                   <Button variant="outline" className="w-full justify-start gap-3" size="default">
                     <UtensilsCrossed className="h-4 w-4" />
                     Meal Plans ({mealPlans.length})
                   </Button>
                 </Link>
-              )}
+              ) : null}
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* Browse Services */}
-      {sessionServices.length > 0 && (
+      {sessionServices.length > 0 ? (
         <div>
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -413,15 +469,15 @@ export default async function ClientDashboard() {
                   <h4 className="font-semibold">{service.name}</h4>
                   <p className="text-2xl font-bold text-primary mt-1">
                     {formatPrice(service.price)}
-                    {service.type === 'unlimited' && (
+                    {service.type === 'unlimited' ? (
                       <span className="text-sm font-normal text-muted-foreground">/mo</span>
-                    )}
+                    ) : null}
                   </p>
-                  {service.session_count && (
+                  {service.session_count ? (
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {service.session_count} session{service.session_count !== 1 ? 's' : ''}
                     </p>
-                  )}
+                  ) : null}
                   <p className="text-xs text-muted-foreground mt-1 mb-3 line-clamp-2">
                     {service.description}
                   </p>
@@ -435,7 +491,7 @@ export default async function ClientDashboard() {
             ))}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

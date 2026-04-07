@@ -38,7 +38,7 @@ export async function PATCH(
   // Get booking
   const { data: booking } = await supabase
     .from('bookings')
-    .select('*, client:profiles!bookings_client_id_fkey(*), service:services(*)')
+    .select('*, client:profiles!bookings_client_id_fkey(*), service:services(*), trainer:trainers(user_id, profile:profiles!trainers_user_id_fkey(timezone))')
     .eq('id', id)
     .single()
 
@@ -106,7 +106,8 @@ export async function PATCH(
             ? 'Virtual session via Daily'
             : booking.location_type === 'travel'
               ? booking.travel_address || undefined
-              : undefined
+              : undefined,
+          booking.trainer?.profile?.timezone || 'America/New_York'
         )
         if (eventId) {
           updateData.google_calendar_event_id = eventId

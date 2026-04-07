@@ -14,6 +14,7 @@ export type Service = {
   name?: string
   description?: string | null
   price?: number
+  is_active?: boolean
   duration_minutes?: number | null
   category?: string
   is_popular?: boolean
@@ -37,6 +38,7 @@ type ServiceFormData = {
   category: string
   is_popular: boolean
   is_session: boolean
+  is_active: boolean
   session_limit: string
   fulfillment_type: NonNullable<Service['fulfillment_type']>
   access_url: string
@@ -52,6 +54,7 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
     category: 'session',
     is_popular: false,
     is_session: true,
+    is_active: true,
     session_limit: '',
     fulfillment_type: 'booking' as const,
     access_url: '',
@@ -62,11 +65,12 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
       setFormData({
         name: serviceToEdit.title || serviceToEdit.name || '',
         description: serviceToEdit.description || '',
-        price: String(serviceToEdit.price ?? ''),
+        price: serviceToEdit.price != null ? (serviceToEdit.price / 100).toFixed(2) : '',
         duration_minutes: String(serviceToEdit.duration_minutes ?? 60),
         category: serviceToEdit.category || 'session',
         is_popular: serviceToEdit.is_popular ?? false,
         is_session: serviceToEdit.is_session ?? true,
+        is_active: serviceToEdit.is_active ?? true,
         session_limit: String(serviceToEdit.session_limit ?? ''),
         fulfillment_type: serviceToEdit.fulfillment_type || 'booking',
         access_url: serviceToEdit.access_url || '',
@@ -106,6 +110,9 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
     try {
       const priceValue = parseFloat(formData.price)
       if (isNaN(priceValue) || priceValue < 0) throw new Error('Please enter a valid price (0 or greater).')
+      if (formData.fulfillment_type === 'vimeo' && formData.category !== 'subscription') {
+        throw new Error('Vimeo-only products should use the Subscription category so digital access is tracked correctly.')
+      }
 
       const payload = {
         title: formData.name,
@@ -115,6 +122,7 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
         category: formData.category,
         is_popular: formData.is_popular,
         is_session: formData.is_session,
+        is_active: formData.is_active,
         session_limit: formData.session_limit ? parseInt(formData.session_limit) : null,
         fulfillment_type: formData.fulfillment_type,
         access_url: formData.access_url || null,
@@ -204,6 +212,16 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
             <p className="text-xs text-gray-500">
               Choose how this product is fulfilled after purchase.
             </p>
+            {(formData.fulfillment_type === 'daily' || formData.fulfillment_type === 'hybrid') && (
+              <p className="text-xs text-amber-700">
+                Daily-powered products can only go live after a valid Daily API key is configured.
+              </p>
+            )}
+            {(formData.fulfillment_type === 'vimeo' || formData.fulfillment_type === 'hybrid') && (
+              <p className="text-xs text-amber-700">
+                Vimeo products need either a per-service access URL here or a global deployment fallback URL.
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -251,6 +269,17 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
               className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
             />
             <Label htmlFor="is_session" className="font-normal cursor-pointer">Is Bookable Session?</Label>
+          </div>
+
+          <div className="flex items-center gap-3 border p-3 rounded-md bg-gray-50">
+            <input
+              type="checkbox"
+              id="is_active"
+              checked={formData.is_active}
+              onChange={(e) => setFormData((p) => ({ ...p, is_active: e.target.checked }))}
+              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+            />
+            <Label htmlFor="is_active" className="font-normal cursor-pointer">Active for customers</Label>
           </div>
 
           <div className="flex items-center gap-3 border p-3 rounded-md bg-gray-50">

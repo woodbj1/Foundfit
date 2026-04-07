@@ -113,11 +113,12 @@ export async function POST(request: NextRequest) {
 
   const { data: trainerProfile } = await supabase
     .from('profiles')
-    .select('booking_preference')
+    .select('booking_preference, timezone')
     .eq('id', trainerRecord.user_id)
     .single()
 
   const shouldAutoApprove = trainerProfile?.booking_preference === 'instant_confirmation'
+  const trainerTimezone = trainerProfile?.timezone || 'America/New_York'
 
   // Calculate end time
   const startDate = new Date(start_time)
@@ -193,7 +194,8 @@ export async function POST(request: NextRequest) {
               ? 'Virtual session via Daily'
               : location_type === 'travel'
                 ? travel_address || undefined
-                : undefined
+                : undefined,
+            trainerTimezone
           )
 
           const updateData: Partial<

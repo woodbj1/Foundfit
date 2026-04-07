@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Clock, DollarSign, Loader2, Pencil, Plus, RefreshCw, Sparkles, Tag, Trash2, X } from 'lucide-react'
+import { Clock, Loader2, Pencil, Plus, RefreshCw, Sparkles, Tag, Trash2, X } from 'lucide-react'
 import ServiceModal, { type Service } from './service-modal'
+import { formatPrice } from '@/lib/stripe'
 import { toast } from 'sonner'
 
 export default function ServiceManagement() {
@@ -50,7 +52,7 @@ export default function ServiceManagement() {
         const err = await res.json()
         throw new Error(err.error || 'Failed to delete.')
       }
-      toast.success(`${deleteTarget.title || deleteTarget.name} deleted.`)
+      toast.success(`${deleteTarget.title || deleteTarget.name} deactivated.`)
       await fetchServices()
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Could not delete service.')
@@ -129,7 +131,7 @@ export default function ServiceManagement() {
                   <th className="px-6 py-4">Service Name</th>
                   <th className="px-6 py-4">Duration</th>
                   <th className="px-6 py-4">Price</th>
-                  <th className="px-6 py-4">Category</th>
+                  <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -153,6 +155,9 @@ export default function ServiceManagement() {
                             {service.fulfillment_type.replace(/_/g, ' ')}
                           </p>
                         )}
+                        {(service.fulfillment_type === 'vimeo' || service.fulfillment_type === 'hybrid') && !service.access_url && (
+                          <p className="mt-1 text-xs text-amber-600">No per-service video URL set</p>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -162,15 +167,17 @@ export default function ServiceManagement() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center font-medium text-gray-900">
-                        <DollarSign className="mr-1 h-4 w-4 text-gray-400" />
-                        {service.price?.toFixed(2)}
-                      </div>
+                      <div className="font-medium text-gray-900">{formatPrice(service.price || 0)}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="inline-flex items-center rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide text-purple-800">
-                        {(service.category || 'General').replace(/_/g, ' ')}
-                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant={service.is_active ? 'default' : 'secondary'}>
+                          {service.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                        <Badge variant="outline">
+                          {(service.category || 'General').replace(/_/g, ' ')}
+                        </Badge>
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-2">
@@ -221,14 +228,14 @@ export default function ServiceManagement() {
               </button>
             </div>
             <p className="mb-6 text-gray-600">
-              This will permanently delete{' '}
+              This will deactivate{' '}
               <span className="font-semibold text-gray-900">&ldquo;{deleteTarget.title || deleteTarget.name}&rdquo;</span>
-              {' '}and archive its Stripe product.
+              {' '}and archive its Stripe product so customers can no longer purchase it.
             </p>
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
               <Button onClick={confirmDelete} className="bg-red-600 text-white hover:bg-red-700">
-                Delete Service
+                Deactivate Service
               </Button>
             </div>
           </div>

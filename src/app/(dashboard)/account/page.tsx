@@ -16,7 +16,8 @@ import { createClient } from '@/lib/supabase/client'
 import { formatPrice } from '@/lib/stripe'
 import type { Profile, Service, SessionPack, Subscription } from '@/lib/types'
 import {
-  getActiveDigitalSubscriptions,
+  getActiveLibraryPacks,
+  getActiveLibrarySubscriptions,
   getActiveSessionPacks,
   getActiveSessionSubscriptions,
   getPrimarySessionSubscription,
@@ -71,8 +72,22 @@ export default function AccountPage() {
         setAddress(profileRes.data.address || '')
       }
       if (servicesRes.data) setServices(servicesRes.data as Service[])
-      if (subRes.data) setSubscriptions(subRes.data as AccountSubscription[])
-      if (packsRes.data) setPacks(packsRes.data as AccountSessionPack[])
+      if (subRes.data) {
+        setSubscriptions(
+          (subRes.data as AccountSubscription[]).map((subscription) => ({
+            ...subscription,
+            service: Array.isArray(subscription.service) ? subscription.service[0] : subscription.service,
+          }))
+        )
+      }
+      if (packsRes.data) {
+        setPacks(
+          (packsRes.data as AccountSessionPack[]).map((pack) => ({
+            ...pack,
+            service: Array.isArray(pack.service) ? pack.service[0] : pack.service,
+          }))
+        )
+      }
       setLoading(false)
     }
 
@@ -119,7 +134,8 @@ export default function AccountPage() {
   const sessionServices = services.filter((service) => service.is_session !== false)
   const digitalServices = services.filter((service) => service.is_session === false)
   const sessionSubscriptions = getActiveSessionSubscriptions(subscriptions)
-  const digitalSubscriptions = getActiveDigitalSubscriptions(subscriptions)
+  const librarySubscriptions = getActiveLibrarySubscriptions(subscriptions)
+  const libraryPacks = getActiveLibraryPacks(packs)
   const primarySessionSubscription = getPrimarySessionSubscription(subscriptions)
   const activePacks = getActiveSessionPacks(packs)
 
@@ -237,7 +253,7 @@ export default function AccountPage() {
               </>
             )}
 
-            {digitalSubscriptions.length > 0 && (
+            {(librarySubscriptions.length > 0 || libraryPacks.length > 0) && (
               <>
                 <Separator className="my-4" />
                 <h4 className="font-medium mb-3 flex items-center gap-2">
@@ -245,10 +261,18 @@ export default function AccountPage() {
                   Digital Access
                 </h4>
                 <div className="space-y-2">
-                  {digitalSubscriptions.map((subscription) => (
+                  {librarySubscriptions.map((subscription) => (
                     <div key={subscription.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                       <span className="text-sm font-medium">{subscription.service?.name}</span>
                       <Badge variant="secondary">Active</Badge>
+                    </div>
+                  ))}
+                  {libraryPacks.map((pack) => (
+                    <div key={pack.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <span className="text-sm font-medium">{pack.service?.name}</span>
+                      <Badge variant="secondary">
+                        {pack.total_sessions - pack.used_sessions} remaining
+                      </Badge>
                     </div>
                   ))}
                 </div>

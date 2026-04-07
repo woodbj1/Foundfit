@@ -1,16 +1,22 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import type { VariantProps } from 'class-variance-authority'
-import { createClient } from '@/lib/supabase/server'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge, badgeVariants } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Clock, MapPin, Building2 } from 'lucide-react'
 import { format } from 'date-fns'
+import { Building2, Clock, MapPin, Video } from 'lucide-react'
+import type { VariantProps } from 'class-variance-authority'
+
 import CancelBookingButton from '@/components/bookings/cancel-button'
-import type { Booking, BookingStatus } from '@/lib/types'
+import JoinDailyButton from '@/components/bookings/join-daily-button'
+import { Badge, badgeVariants } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { getBookingLocationLabel, isVirtualLocation } from '@/lib/booking-display'
+import { createClient } from '@/lib/supabase/server'
+import type { Booking, BookingStatus, Profile, Service, Trainer } from '@/lib/types'
 
 type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>['variant']>
-type SessionBooking = Booking
+type SessionBooking = Booking & {
+  trainer?: (Trainer & { profile?: Profile | null }) | null
+  service?: Pick<Service, 'name'> | null
+}
 
 function statusColor(status: BookingStatus): BadgeVariant {
   switch (status) {
@@ -30,39 +36,53 @@ function statusColor(status: BookingStatus): BadgeVariant {
 
 function BookingCard({ booking }: { booking: SessionBooking }) {
   return (
-    <div className="flex items-start justify-between rounded-lg border bg-card p-4">
-      <div className="space-y-1">
-        <p className="font-medium">
-          {format(new Date(booking.start_time), 'EEEE, MMMM d, yyyy')}
-        </p>
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Clock className="h-3.5 w-3.5" />
-            {format(new Date(booking.start_time), 'h:mm a')} - {format(new Date(booking.end_time), 'h:mm a')}
-          </span>
-          <span className="flex items-center gap-1">
-            {booking.location_type === 'gym' ? (
-              <>
-                <Building2 className="h-3.5 w-3.5" />
-                Studio
-              </>
-            ) : (
-              <>
-                <MapPin className="h-3.5 w-3.5" />
-                In-Home
-              </>
-            )}
-          </span>
+    <div className="rounded-lg border bg-card p-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-1">
+          <p className="font-medium">
+            {format(new Date(booking.start_time), 'EEEE, MMMM d, yyyy')}
+          </p>
+          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5" />
+              {format(new Date(booking.start_time), 'h:mm a')} - {format(new Date(booking.end_time), 'h:mm a')}
+            </span>
+            <span className="flex items-center gap-1">
+              {isVirtualLocation(booking.location_type) ? (
+                <>
+                  <Video className="h-3.5 w-3.5" />
+                  Virtual
+                </>
+              ) : booking.location_type === 'gym' ? (
+                <>
+                  <Building2 className="h-3.5 w-3.5" />
+                  Studio
+                </>
+              ) : (
+                <>
+                  <MapPin className="h-3.5 w-3.5" />
+                  {getBookingLocationLabel(booking.location_type, booking.travel_address)}
+                </>
+              )}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {booking.service?.name || 'Training Session'}
+            {booking.trainer?.profile?.full_name ? ` • ${booking.trainer.profile.full_name}` : ''}
+          </p>
+          {booking.notes ? (
+            <p className="mt-1 text-xs text-muted-foreground">Note: {booking.notes}</p>
+          ) : null}
         </div>
-        {booking.notes && (
-          <p className="mt-1 text-xs text-muted-foreground">Note: {booking.notes}</p>
-        )}
-      </div>
-      <div className="flex items-center gap-2">
-        <Badge variant={statusColor(booking.status)}>{booking.status}</Badge>
-        {['pending', 'approved'].includes(booking.status) && (
-          <CancelBookingButton bookingId={booking.id} />
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={statusColor(booking.status)}>{booking.status}</Badge>
+          {booking.status === 'approved' && isVirtualLocation(booking.location_type) ? (
+            <JoinDailyButton bookingId={booking.id} />
+          ) : null}
+          {['pending', 'approved'].includes(booking.status) ? (
+            <CancelBookingButton bookingId={booking.id} />
+          ) : null}
+        </div>
       </div>
     </div>
   )
@@ -70,14 +90,17 @@ function BookingCard({ booking }: { booking: SessionBooking }) {
 
 export default async function SessionsPage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
   if (!user) redirect('/login')
 
   const now = new Date().toISOString()
 
   const { data: upcoming } = await supabase
     .from('bookings')
-    .select('*')
+    .select('*, trainer:trainers(*, profile:profiles(*)), service:services(name)')
     .eq('client_id', user.id)
     .in('status', ['approved', 'pending'])
     .gte('start_time', now)
@@ -85,7 +108,7 @@ export default async function SessionsPage() {
 
   const { data: past } = await supabase
     .from('bookings')
-    .select('*')
+    .select('*, trainer:trainers(*, profile:profiles(*)), service:services(name)')
     .eq('client_id', user.id)
     .in('status', ['completed', 'cancelled', 'declined'])
     .order('start_time', { ascending: false })
@@ -101,17 +124,14 @@ export default async function SessionsPage() {
         <p className="mt-1 text-muted-foreground">View and manage your training sessions</p>
       </div>
 
-      <Tabs defaultValue="upcoming">
-        <TabsList>
-          <TabsTrigger value="upcoming">
-            Upcoming ({upcomingBookings.length})
-          </TabsTrigger>
-          <TabsTrigger value="past">
-            Past ({pastBookings.length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="upcoming" className="mt-6">
+      <div className="space-y-6">
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">Upcoming ({upcomingBookings.length})</h2>
+            <Link href="/book">
+              <span className="text-sm text-muted-foreground underline underline-offset-4">Book another session</span>
+            </Link>
+          </div>
           {upcomingBookings.length > 0 ? (
             <div className="space-y-3">
               {upcomingBookings.map((booking) => <BookingCard key={booking.id} booking={booking} />)}
@@ -124,9 +144,10 @@ export default async function SessionsPage() {
               </CardContent>
             </Card>
           )}
-        </TabsContent>
+        </section>
 
-        <TabsContent value="past" className="mt-6">
+        <section className="space-y-3">
+          <h2 className="text-xl font-semibold">Past ({pastBookings.length})</h2>
           {pastBookings.length > 0 ? (
             <div className="space-y-3">
               {pastBookings.map((booking) => <BookingCard key={booking.id} booking={booking} />)}
@@ -138,8 +159,8 @@ export default async function SessionsPage() {
               </CardContent>
             </Card>
           )}
-        </TabsContent>
-      </Tabs>
+        </section>
+      </div>
     </div>
   )
 }

@@ -2,22 +2,37 @@
 
 import { useEffect, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { format } from 'date-fns'
+import {
+  Building2,
+  Check,
+  Clock,
+  Loader2,
+  MapPin,
+  MessageSquare,
+  Video,
+  X,
+} from 'lucide-react'
+
+import JoinDailyButton from '@/components/bookings/join-daily-button'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Check, X, Loader2, Clock, MapPin, Building2, MessageSquare } from 'lucide-react'
+import { getBookingLocationLabel, isVirtualLocation } from '@/lib/booking-display'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { format } from 'date-fns'
-import type { Booking, Profile } from '@/lib/types'
+import type { Booking, Profile, Service } from '@/lib/types'
 
 type TrainerBooking = Booking & {
   client?: Profile | null
+  service?: Pick<Service, 'name'> | null
 }
 
 async function fetchTrainerBookings(supabase: SupabaseClient): Promise<TrainerBooking[]> {
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
   if (!user) return []
 
   const { data: trainer } = await supabase.from('trainers').select('id').eq('user_id', user.id).single()
@@ -25,7 +40,7 @@ async function fetchTrainerBookings(supabase: SupabaseClient): Promise<TrainerBo
 
   const { data } = await supabase
     .from('bookings')
-    .select('*, client:profiles!bookings_client_id_fkey(*)')
+    .select('*, client:profiles!bookings_client_id_fkey(*), service:services(name)')
     .eq('trainer_id', trainer.id)
     .order('start_time', { ascending: false })
 
@@ -44,68 +59,81 @@ function BookingItem({
   onAction: (bookingId: string, action: 'approve' | 'decline') => void
 }) {
   return (
-    <div className="flex items-start justify-between rounded-lg border bg-card p-4">
-      <div className="flex-1 space-y-1">
-        <div className="flex items-center gap-2">
-          <p className="font-medium">{booking.client?.full_name || 'Unknown Client'}</p>
-          <Badge variant={booking.status === 'approved' ? 'default' : booking.status === 'pending' ? 'secondary' : 'outline'}>
-            {booking.status}
-          </Badge>
+    <div className="rounded-lg border bg-card p-4">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-medium">{booking.client?.full_name || 'Unknown Client'}</p>
+            <Badge variant={booking.status === 'approved' ? 'default' : booking.status === 'pending' ? 'secondary' : 'outline'}>
+              {booking.status}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+            <span>{format(new Date(booking.start_time), 'MMM d, yyyy')}</span>
+            <span className="flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5" />
+              {format(new Date(booking.start_time), 'h:mm a')} - {format(new Date(booking.end_time), 'h:mm a')}
+            </span>
+            <span className="flex items-center gap-1">
+              {isVirtualLocation(booking.location_type) ? (
+                <>
+                  <Video className="h-3.5 w-3.5" />
+                  Virtual
+                </>
+              ) : booking.location_type === 'gym' ? (
+                <>
+                  <Building2 className="h-3.5 w-3.5" />
+                  Studio
+                </>
+              ) : (
+                <>
+                  <MapPin className="h-3.5 w-3.5" />
+                  {getBookingLocationLabel(booking.location_type, booking.travel_address)}
+                </>
+              )}
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">{booking.service?.name || 'Training Session'}</p>
+          {booking.notes ? (
+            <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
+              <MessageSquare className="h-3.5 w-3.5" />
+              {booking.notes}
+            </p>
+          ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-          <span>{format(new Date(booking.start_time), 'MMM d, yyyy')}</span>
-          <span className="flex items-center gap-1">
-            <Clock className="h-3.5 w-3.5" />
-            {format(new Date(booking.start_time), 'h:mm a')} - {format(new Date(booking.end_time), 'h:mm a')}
-          </span>
-          <span className="flex items-center gap-1">
-            {booking.location_type === 'gym' ? (
-              <>
-                <Building2 className="h-3.5 w-3.5" />
-                Studio
-              </>
-            ) : (
-              <>
-                <MapPin className="h-3.5 w-3.5" />
-                {booking.travel_address || 'In-Home'}
-              </>
-            )}
-          </span>
+        <div className="flex flex-wrap gap-2">
+          {booking.status === 'approved' && isVirtualLocation(booking.location_type) ? (
+            <JoinDailyButton bookingId={booking.id} />
+          ) : null}
+          {showActions ? (
+            <>
+              <Button
+                size="sm"
+                onClick={() => onAction(booking.id, 'approve')}
+                disabled={actionLoading === booking.id}
+                className="gap-1"
+              >
+                {actionLoading === booking.id ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Check className="h-3.5 w-3.5" />
+                )}
+                Approve
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onAction(booking.id, 'decline')}
+                disabled={actionLoading === booking.id}
+                className="gap-1 text-destructive"
+              >
+                <X className="h-3.5 w-3.5" />
+                Decline
+              </Button>
+            </>
+          ) : null}
         </div>
-        {booking.notes && (
-          <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-            <MessageSquare className="h-3.5 w-3.5" />
-            {booking.notes}
-          </p>
-        )}
       </div>
-      {showActions && (
-        <div className="ml-4 flex gap-2">
-          <Button
-            size="sm"
-            onClick={() => onAction(booking.id, 'approve')}
-            disabled={actionLoading === booking.id}
-            className="gap-1"
-          >
-            {actionLoading === booking.id ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Check className="h-3.5 w-3.5" />
-            )}
-            Approve
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onAction(booking.id, 'decline')}
-            disabled={actionLoading === booking.id}
-            className="gap-1 text-destructive"
-          >
-            <X className="h-3.5 w-3.5" />
-            Decline
-          </Button>
-        </div>
-      )}
     </div>
   )
 }
