@@ -196,7 +196,7 @@ function ScheduleRuleModal({
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>{(value) => formatScheduleTime(String(value ?? ''))}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {TIME_SLOTS.map((slot) => (
@@ -216,7 +216,7 @@ function ScheduleRuleModal({
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue>{(value) => formatScheduleTime(String(value ?? ''))}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {TIME_SLOTS.map((slot) => (
