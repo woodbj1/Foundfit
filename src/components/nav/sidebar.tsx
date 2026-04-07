@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  Dumbbell,
   LayoutDashboard,
   Calendar,
   Clock,
@@ -16,11 +15,11 @@ import {
   Menu,
   ShieldCheck,
 } from 'lucide-react'
+import BrandLogo from '@/components/brand/brand-logo'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Separator } from '@/components/ui/separator'
 import { createClient } from '@/lib/supabase/client'
-import { SITE } from '@/lib/site-config'
 import { useState } from 'react'
 import type { UserRole } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -110,8 +109,7 @@ export default function Sidebar({ role, userName }: { role: UserRole; userName: 
     <div className="flex flex-col h-full">
       <div className="p-6">
         <Link href="/" className="flex items-center gap-2">
-          <Dumbbell className="h-7 w-7 text-primary" />
-          <span className="text-xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">{SITE.name}</span>
+          <BrandLogo iconClassName="h-8 w-8" />
         </Link>
       </div>
 
@@ -144,8 +142,7 @@ export default function Sidebar({ role, userName }: { role: UserRole; userName: 
       {/* Mobile hamburger */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b px-4 py-3 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <Dumbbell className="h-6 w-6 text-primary" />
-          <span className="text-lg font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">{SITE.name}</span>
+          <BrandLogo iconClassName="h-7 w-7" nameClassName="text-lg" />
         </Link>
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground">

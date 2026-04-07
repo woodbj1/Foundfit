@@ -1,7 +1,6 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import {
-  Dumbbell,
   Calendar,
   Check,
   Clock,
@@ -12,6 +11,7 @@ import {
   Users,
   User,
 } from 'lucide-react'
+import BrandLogo from '@/components/brand/brand-logo'
 import { Button } from '@/components/ui/button'
 import Footer from '@/components/Footer'
 import { getPublicServiceCatalog, type PublicService } from '@/lib/public-catalog'
@@ -141,10 +141,7 @@ export default async function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link href="/" className="flex items-center gap-2">
-              <Dumbbell className="h-8 w-8 text-purple-600" />
-              <span className="text-2xl font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent">
-                {SITE.name}
-              </span>
+              <BrandLogo iconClassName="h-9 w-9" nameClassName="text-2xl" priority />
             </Link>
             <div className="flex items-center gap-3">
               <Link href="/location">

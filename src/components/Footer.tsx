@@ -1,5 +1,7 @@
 import Link from 'next/link'
-import { Dumbbell, Mail, MapPin, Phone } from 'lucide-react'
+import { Mail, MapPin, Phone } from 'lucide-react'
+
+import BrandLogo from '@/components/brand/brand-logo'
 import { SITE } from '@/lib/site-config'
 
 export default function Footer() {
@@ -9,10 +11,7 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="space-y-4">
             <Link href="/" className="flex items-center gap-2 text-white">
-              <Dumbbell className="h-8 w-8 text-purple-500" />
-              <span className="text-xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">
-                {SITE.name}
-              </span>
+              <BrandLogo iconClassName="h-9 w-9" />
             </Link>
             <p className="text-sm text-gray-400">
               Personalized training, virtual coaching, and nutrition support built around your real life.

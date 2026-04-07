@@ -7,14 +7,13 @@ import {
   AlertCircle,
   Calendar,
   CheckCircle2,
-  Dumbbell,
   KeyRound,
   Loader2,
   LogOut,
   Mail,
 } from 'lucide-react'
+import BrandLogo from '@/components/brand/brand-logo'
 import { createClient } from '@/lib/supabase/client'
-import { SITE } from '@/lib/site-config'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -293,10 +292,7 @@ function TrainerSetupPageContent() {
         <Card className="w-full max-w-md shadow-xl border-0">
           <CardHeader className="text-center">
             <Link href="/" className="flex items-center justify-center gap-2 mb-4">
-              <Dumbbell className="h-8 w-8 text-purple-600" />
-              <span className="text-2xl font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent">
-                {SITE.name}
-              </span>
+              <BrandLogo iconClassName="h-9 w-9" nameClassName="text-2xl" priority />
             </Link>
             <CardTitle className="text-2xl">Finish Trainer Setup</CardTitle>
             <CardDescription>
