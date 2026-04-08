@@ -107,9 +107,12 @@ export default function Sidebar({ role, userName }: { role: UserRole; userName: 
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
-      <div className="p-6">
-        <Link href="/" className="flex items-center gap-2">
-          <BrandLogo imageClassName="h-24 w-auto max-w-[150px]" />
+      <div className="px-4 pt-8 pb-6">
+        <Link href="/" className="flex w-full justify-center">
+          <BrandLogo
+            className="w-full justify-center"
+            imageClassName="h-36 w-auto max-w-[220px]"
+          />
         </Link>
       </div>
 
