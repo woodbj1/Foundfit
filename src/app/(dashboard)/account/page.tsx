@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import CheckoutButton from '@/components/payments/checkout-button'
 import { createClient } from '@/lib/supabase/client'
 import { formatPrice } from '@/lib/stripe'
 import type { Profile, Service, SessionPack, Subscription } from '@/lib/types'
@@ -110,25 +111,6 @@ export default function AccountPage() {
     }
 
     setSaving(false)
-  }
-
-  async function handlePurchase(serviceId: string) {
-    try {
-      const res = await fetch('/api/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ service_id: serviceId }),
-      })
-      const data = await res.json()
-
-      if (data.url) {
-        window.location.assign(data.url)
-      } else {
-        toast.error(data.error || 'Failed to create checkout session')
-      }
-    } catch {
-      toast.error('Something went wrong')
-    }
   }
 
   const sessionServices = services.filter((service) => service.is_session !== false)
@@ -310,9 +292,9 @@ export default function AccountPage() {
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1 mb-3">{service.description}</p>
-                  <Button size="sm" className="w-full" onClick={() => handlePurchase(service.id)}>
+                  <CheckoutButton serviceId={service.id} size="sm" className="w-full">
                     Purchase
-                  </Button>
+                  </CheckoutButton>
                 </div>
               ))}
             </div>
@@ -335,14 +317,14 @@ export default function AccountPage() {
                       )}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1 mb-3">{service.description}</p>
-                    <Button
+                    <CheckoutButton
+                      serviceId={service.id}
                       size="sm"
                       variant="outline"
                       className="w-full"
-                      onClick={() => handlePurchase(service.id)}
                     >
                       Purchase
-                    </Button>
+                    </CheckoutButton>
                   </div>
                 ))}
               </div>

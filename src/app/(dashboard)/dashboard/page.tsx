@@ -19,6 +19,7 @@ import {
 
 import JoinDailyButton from '@/components/bookings/join-daily-button'
 import BillingPortalButton from '@/components/nav/billing-portal-button'
+import CheckoutButton from '@/components/payments/checkout-button'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -481,11 +482,9 @@ export default async function ClientDashboard() {
                   <p className="text-xs text-muted-foreground mt-1 mb-3 line-clamp-2">
                     {service.description}
                   </p>
-                  <Link href="/account">
-                    <Button size="sm" variant="outline" className="w-full">
-                      Purchase
-                    </Button>
-                  </Link>
+                  <CheckoutButton serviceId={service.id} size="sm" variant="outline" className="w-full">
+                    Purchase
+                  </CheckoutButton>
                 </CardContent>
               </Card>
             ))}
