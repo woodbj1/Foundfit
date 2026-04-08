@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { format } from 'date-fns'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Building2,
   Check,
@@ -51,15 +52,17 @@ function BookingItem({
   booking,
   showActions = false,
   actionLoading,
+  isHighlighted = false,
   onAction,
 }: {
   booking: TrainerBooking
   showActions?: boolean
   actionLoading: string | null
+  isHighlighted?: boolean
   onAction: (bookingId: string, action: 'approve' | 'decline') => void
 }) {
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className={`rounded-lg border bg-card p-4 ${isHighlighted ? 'border-primary ring-2 ring-primary/20' : ''}`}>
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -139,10 +142,17 @@ function BookingItem({
 }
 
 export default function TrainerBookingsPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [supabase] = useState(() => createClient())
   const [bookings, setBookings] = useState<TrainerBooking[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'pending' | 'upcoming' | 'past'>('pending')
+  const processedActionRef = useRef<string | null>(null)
+  const bookingFromEmail = searchParams.get('booking')
+  const actionFromEmail = searchParams.get('action')
+  const tabFromEmail = searchParams.get('tab')
 
   useEffect(() => {
     let active = true
@@ -161,7 +171,17 @@ export default function TrainerBookingsPage() {
     }
   }, [supabase])
 
-  async function handleAction(bookingId: string, action: 'approve' | 'decline') {
+  useEffect(() => {
+    if (tabFromEmail === 'pending' || tabFromEmail === 'upcoming' || tabFromEmail === 'past') {
+      setActiveTab(tabFromEmail)
+    }
+  }, [tabFromEmail])
+
+  const handleAction = useCallback(async (
+    bookingId: string,
+    action: 'approve' | 'decline',
+    options?: { silentSuccess?: boolean }
+  ) => {
     setActionLoading(bookingId)
     try {
       const res = await fetch(`/api/bookings/${bookingId}`, {
@@ -173,17 +193,54 @@ export default function TrainerBookingsPage() {
       if (!res.ok) {
         const data = await res.json()
         toast.error(data.error || `Failed to ${action}`)
+        return false
       } else {
         const nextBookings = await fetchTrainerBookings(supabase)
         setBookings(nextBookings)
-        toast.success(`Booking ${action}d!`)
+        if (!options?.silentSuccess) {
+          toast.success(`Booking ${action}d!`)
+        }
+        return true
       }
     } catch {
       toast.error('Something went wrong')
+      return false
+    } finally {
+      setActionLoading(null)
+    }
+  }, [supabase])
+
+  useEffect(() => {
+    if (loading || !bookingFromEmail || !actionFromEmail) {
+      return
     }
 
-    setActionLoading(null)
-  }
+    if (actionFromEmail !== 'approve' && actionFromEmail !== 'decline') {
+      return
+    }
+
+    const actionKey = `${actionFromEmail}:${bookingFromEmail}`
+    if (processedActionRef.current === actionKey) {
+      return
+    }
+    processedActionRef.current = actionKey
+
+    void (async () => {
+      const success = await handleAction(bookingFromEmail, actionFromEmail, { silentSuccess: true })
+      const nextParams = new URLSearchParams(searchParams.toString())
+      nextParams.delete('action')
+
+      if (success) {
+        nextParams.set('tab', actionFromEmail === 'approve' ? 'upcoming' : 'past')
+        toast.success(`Booking ${actionFromEmail}d!`)
+      } else {
+        nextParams.set('tab', 'pending')
+      }
+
+      const nextQuery = nextParams.toString()
+      router.replace(nextQuery ? `/trainer/bookings?${nextQuery}` : '/trainer/bookings')
+    })()
+  }, [actionFromEmail, bookingFromEmail, handleAction, loading, router, searchParams])
 
   if (loading) {
     return (
@@ -210,7 +267,7 @@ export default function TrainerBookingsPage() {
         <p className="mt-1 text-muted-foreground">Manage session requests and view your schedule</p>
       </div>
 
-      <Tabs defaultValue="pending">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'pending' | 'upcoming' | 'past')}>
         <TabsList>
           <TabsTrigger value="pending">Pending ({pending.length})</TabsTrigger>
           <TabsTrigger value="upcoming">Upcoming ({upcoming.length})</TabsTrigger>
@@ -225,6 +282,7 @@ export default function TrainerBookingsPage() {
                 booking={booking}
                 showActions
                 actionLoading={actionLoading}
+                isHighlighted={booking.id === bookingFromEmail}
                 onAction={handleAction}
               />
             ))
@@ -244,6 +302,7 @@ export default function TrainerBookingsPage() {
                 key={booking.id}
                 booking={booking}
                 actionLoading={actionLoading}
+                isHighlighted={booking.id === bookingFromEmail}
                 onAction={handleAction}
               />
             ))
@@ -263,6 +322,7 @@ export default function TrainerBookingsPage() {
                 key={booking.id}
                 booking={booking}
                 actionLoading={actionLoading}
+                isHighlighted={booking.id === bookingFromEmail}
                 onAction={handleAction}
               />
             ))

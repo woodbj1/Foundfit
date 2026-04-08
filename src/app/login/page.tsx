@@ -24,6 +24,7 @@ function LoginPageContent() {
 
   const error = searchParams.get('error')
   const confirmed = searchParams.get('confirmed')
+  const next = searchParams.get('next')
 
   const urlMessage = confirmed === 'true'
     ? {
@@ -68,7 +69,7 @@ function LoginPageContent() {
     }
 
     toast.success('Logged in successfully.')
-    router.push('/dashboard')
+    router.push(next?.startsWith('/') ? next : '/dashboard')
     router.refresh()
   }
 

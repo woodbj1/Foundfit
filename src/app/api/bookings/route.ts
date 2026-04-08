@@ -342,7 +342,8 @@ export async function POST(request: NextRequest) {
       const emailData = bookingRequestEmail(
         clientProfile?.full_name || 'A client',
         dateLabel,
-        timeLabel
+        timeLabel,
+        booking.id
       )
       await sendEmail({
         to: trainer.profile.email,

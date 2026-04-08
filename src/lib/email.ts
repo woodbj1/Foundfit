@@ -29,6 +29,11 @@ type BrandedEmailOptions = {
   ctaHref?: string
   secondaryCtaLabel?: string
   secondaryCtaHref?: string
+  actions?: Array<{
+    label: string
+    href: string
+    variant?: 'primary' | 'secondary'
+  }>
   footerNote?: string
 }
 
@@ -68,6 +73,28 @@ function getEmailHomeUrl() {
 
 function getLogoUrl() {
   return new URL('/brand/email-logo-white.png', getEmailAssetBaseUrl()).toString()
+}
+
+function getTrainerBookingsLink(options?: {
+  bookingId?: string
+  action?: 'approve' | 'decline'
+  tab?: 'pending' | 'upcoming' | 'past'
+}) {
+  const url = new URL('/trainer/bookings', getAppUrl())
+
+  if (options?.bookingId) {
+    url.searchParams.set('booking', options.bookingId)
+  }
+
+  if (options?.action) {
+    url.searchParams.set('action', options.action)
+  }
+
+  if (options?.tab) {
+    url.searchParams.set('tab', options.tab)
+  }
+
+  return url.toString()
 }
 
 function escapeHtml(value: string) {
@@ -133,13 +160,18 @@ function renderBrandedEmail({
   ctaHref,
   secondaryCtaLabel,
   secondaryCtaHref,
+  actions,
   footerNote,
 }: BrandedEmailOptions) {
-  const primaryCta = ctaLabel && ctaHref ? renderButton(ctaLabel, ctaHref, 'primary') : ''
-  const secondaryCta =
-    secondaryCtaLabel && secondaryCtaHref
-      ? renderButton(secondaryCtaLabel, secondaryCtaHref, 'secondary')
-      : ''
+  const actionButtons =
+    actions && actions.length > 0
+      ? actions.map((action) => renderButton(action.label, action.href, action.variant || 'primary'))
+      : [
+          ctaLabel && ctaHref ? renderButton(ctaLabel, ctaHref, 'primary') : '',
+          secondaryCtaLabel && secondaryCtaHref
+            ? renderButton(secondaryCtaLabel, secondaryCtaHref, 'secondary')
+            : '',
+        ].filter(Boolean)
 
   return `
     <div style="margin: 0; padding: 24px 12px; background: #f8f4fc; color: #241335; font-family: 'Segoe UI', Arial, sans-serif;">
@@ -166,10 +198,9 @@ function renderBrandedEmail({
           <div style="height: 6px; background: linear-gradient(90deg, #ec4899 0%, #a855f7 52%, #06b6d4 100%);"></div>
           <div style="padding: 32px 28px;">
             ${bodyHtml}
-            ${primaryCta || secondaryCta ? `
+            ${actionButtons.length > 0 ? `
               <div style="margin-top: 28px; display: flex; flex-wrap: wrap; gap: 12px;">
-                ${primaryCta}
-                ${secondaryCta}
+                ${actionButtons.join('')}
               </div>
             ` : ''}
           </div>
@@ -214,7 +245,7 @@ export async function sendEmail({ to, subject, html, attachments }: EmailOptions
   }
 }
 
-export function bookingRequestEmail(clientName: string, date: string, time: string) {
+export function bookingRequestEmail(clientName: string, date: string, time: string, bookingId: string) {
   return {
     subject: `New Booking Request from ${clientName}`,
     html: renderBrandedEmail({
@@ -229,8 +260,23 @@ export function bookingRequestEmail(clientName: string, date: string, time: stri
           { label: 'Time', value: time },
         ])}
       `,
-      ctaLabel: 'Review Request',
-      ctaHref: getAppLink('/trainer/bookings'),
+      actions: [
+        {
+          label: 'Approve',
+          href: getTrainerBookingsLink({ bookingId, action: 'approve', tab: 'pending' }),
+          variant: 'primary',
+        },
+        {
+          label: 'Decline',
+          href: getTrainerBookingsLink({ bookingId, action: 'decline', tab: 'pending' }),
+          variant: 'secondary',
+        },
+        {
+          label: 'Review Request',
+          href: getTrainerBookingsLink({ bookingId, tab: 'pending' }),
+          variant: 'secondary',
+        },
+      ],
     }),
   }
 }
@@ -342,7 +388,12 @@ export function bookingCancelledEmail(
   }
 }
 
-export function bookingRescheduleRequestEmail(clientName: string, date: string, time: string) {
+export function bookingRescheduleRequestEmail(
+  clientName: string,
+  date: string,
+  time: string,
+  bookingId: string
+) {
   return {
     subject: `Reschedule Request from ${clientName}`,
     html: renderBrandedEmail({
@@ -360,8 +411,23 @@ export function bookingRescheduleRequestEmail(clientName: string, date: string, 
           Open your trainer bookings page to approve or decline the updated request.
         </p>
       `,
-      ctaLabel: 'Review Request',
-      ctaHref: getAppLink('/trainer/bookings'),
+      actions: [
+        {
+          label: 'Approve',
+          href: getTrainerBookingsLink({ bookingId, action: 'approve', tab: 'pending' }),
+          variant: 'primary',
+        },
+        {
+          label: 'Decline',
+          href: getTrainerBookingsLink({ bookingId, action: 'decline', tab: 'pending' }),
+          variant: 'secondary',
+        },
+        {
+          label: 'Review Request',
+          href: getTrainerBookingsLink({ bookingId, tab: 'pending' }),
+          variant: 'secondary',
+        },
+      ],
     }),
   }
 }
