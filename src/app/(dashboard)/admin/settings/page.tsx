@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import CarouselManagement from '@/components/admin/carousel-management'
+import LogoManagement from '@/components/admin/logo-management'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -364,6 +365,10 @@ export default function AdminSettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        <div className="lg:col-span-2">
+          <LogoManagement />
+        </div>
 
         <div className="lg:col-span-2">
           <CarouselManagement />

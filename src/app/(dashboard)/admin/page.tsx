@@ -27,7 +27,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import LogoManagement from '@/components/admin/logo-management'
 import { getAdminDashboardData } from '@/lib/admin-reporting'
 import { formatPrice } from '@/lib/stripe'
 import { createClient } from '@/lib/supabase/server'
@@ -578,10 +577,6 @@ export default async function AdminDashboardPage({
             ))}
           </CardContent>
         </Card>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-1">
-        <LogoManagement />
       </div>
     </div>
   )
