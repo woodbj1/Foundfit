@@ -27,7 +27,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import CarouselManagement from '@/components/admin/carousel-management'
 import LogoManagement from '@/components/admin/logo-management'
 import { getAdminDashboardData } from '@/lib/admin-reporting'
 import { formatPrice } from '@/lib/stripe'
@@ -581,9 +580,8 @@ export default async function AdminDashboardPage({
         </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-1">
         <LogoManagement />
-        <CarouselManagement />
       </div>
     </div>
   )
