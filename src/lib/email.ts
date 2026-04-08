@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { createSessionCalendarInvite } from '@/lib/calendar-invite'
 import { SITE } from '@/lib/site-config'
 
 let resend: Resend | null = null
@@ -238,8 +239,30 @@ export function bookingApprovedEmail(
   clientName: string,
   date: string,
   time: string,
-  joinUrl?: string
+  options: {
+    bookingId: string
+    startTime: string
+    endTime: string
+    serviceName: string
+    trainerName?: string | null
+    locationType?: 'gym' | 'travel' | 'virtual' | string | null
+    travelAddress?: string | null
+    joinUrl?: string | null
+    notes?: string | null
+  }
 ) {
+  const calendarInvite = createSessionCalendarInvite({
+    bookingId: options.bookingId,
+    startTime: options.startTime,
+    endTime: options.endTime,
+    serviceName: options.serviceName,
+    trainerName: options.trainerName,
+    locationType: options.locationType,
+    travelAddress: options.travelAddress,
+    joinUrl: options.joinUrl,
+    notes: options.notes,
+  })
+
   return {
     subject: 'Your Session is Confirmed!',
     html: renderBrandedEmail({
@@ -253,16 +276,20 @@ export function bookingApprovedEmail(
           { label: 'Time', value: time },
         ])}
         <p style="margin: 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
-          ${joinUrl
+          ${options.joinUrl
             ? 'Your Daily join link is ready below. We recommend joining a few minutes early.'
             : 'You can review your schedule any time from your client dashboard.'}
         </p>
+        <p style="margin: 12px 0 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
+          Use the Add to Calendar button below, or open the attached calendar file in Apple Calendar, Outlook, or another calendar app.
+        </p>
       `,
-      ctaLabel: joinUrl ? 'Join Virtual Session' : 'Open Dashboard',
-      ctaHref: joinUrl || getAppLink('/sessions'),
-      secondaryCtaLabel: joinUrl ? 'View Sessions' : undefined,
-      secondaryCtaHref: joinUrl ? getAppLink('/sessions') : undefined,
+      ctaLabel: options.joinUrl ? 'Join Virtual Session' : 'Open Dashboard',
+      ctaHref: options.joinUrl || getAppLink('/sessions'),
+      secondaryCtaLabel: 'Add to Calendar',
+      secondaryCtaHref: calendarInvite.addToCalendarUrl,
     }),
+    attachments: [calendarInvite.attachment],
   }
 }
 
@@ -343,8 +370,30 @@ export function bookingRescheduledEmail(
   clientName: string,
   date: string,
   time: string,
-  joinUrl?: string
+  options: {
+    bookingId: string
+    startTime: string
+    endTime: string
+    serviceName: string
+    trainerName?: string | null
+    locationType?: 'gym' | 'travel' | 'virtual' | string | null
+    travelAddress?: string | null
+    joinUrl?: string | null
+    notes?: string | null
+  }
 ) {
+  const calendarInvite = createSessionCalendarInvite({
+    bookingId: options.bookingId,
+    startTime: options.startTime,
+    endTime: options.endTime,
+    serviceName: options.serviceName,
+    trainerName: options.trainerName,
+    locationType: options.locationType,
+    travelAddress: options.travelAddress,
+    joinUrl: options.joinUrl,
+    notes: options.notes,
+  })
+
   return {
     subject: 'Your Session Has Been Rescheduled',
     html: renderBrandedEmail({
@@ -358,16 +407,20 @@ export function bookingRescheduledEmail(
           { label: 'New Time', value: time },
         ])}
         <p style="margin: 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
-          ${joinUrl
+          ${options.joinUrl
             ? 'Your existing Daily join link is still ready below.'
             : 'You can review the updated session details any time from your dashboard.'}
         </p>
+        <p style="margin: 12px 0 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
+          Use the Add to Calendar button below, or update your calendar from the attached .ics file.
+        </p>
       `,
-      ctaLabel: joinUrl ? 'Join Virtual Session' : 'View Sessions',
-      ctaHref: joinUrl || getAppLink('/sessions'),
-      secondaryCtaLabel: joinUrl ? 'Open Dashboard' : undefined,
-      secondaryCtaHref: joinUrl ? getAppLink('/dashboard') : undefined,
+      ctaLabel: options.joinUrl ? 'Join Virtual Session' : 'View Sessions',
+      ctaHref: options.joinUrl || getAppLink('/sessions'),
+      secondaryCtaLabel: 'Add to Calendar',
+      secondaryCtaHref: calendarInvite.addToCalendarUrl,
     }),
+    attachments: [calendarInvite.attachment],
   }
 }
 

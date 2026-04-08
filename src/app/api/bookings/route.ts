@@ -312,7 +312,17 @@ export async function POST(request: NextRequest) {
             clientProfile.full_name || 'there',
             dateLabel,
             timeLabel,
-            dailyRoomUrl || undefined
+            {
+              bookingId: booking.id,
+              startTime: booking.start_time,
+              endTime: booking.end_time,
+              serviceName: service.name,
+              trainerName: trainer?.profile?.full_name || null,
+              locationType: booking.location_type,
+              travelAddress: booking.travel_address,
+              joinUrl: dailyRoomUrl || undefined,
+              notes: booking.notes,
+            }
           )
           await sendEmail({ to: clientProfile.email, ...emailData })
         }

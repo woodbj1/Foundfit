@@ -231,7 +231,17 @@ export async function PATCH(
             booking.client.full_name || 'there',
             dateStr,
             timeStr,
-            updateData.daily_room_url || booking.daily_room_url || undefined
+            {
+              bookingId: booking.id,
+              startTime: booking.start_time,
+              endTime: booking.end_time,
+              serviceName: booking.service?.name || 'Training Session',
+              trainerName: booking.trainer?.profile?.full_name || null,
+              locationType: booking.location_type,
+              travelAddress: booking.travel_address,
+              joinUrl: updateData.daily_room_url || booking.daily_room_url || undefined,
+              notes: booking.notes,
+            }
           )
         : bookingDeclinedEmail(booking.client.full_name || 'there', dateStr, timeStr)
 
@@ -477,7 +487,17 @@ export async function PUT(
         clientName,
         dateStr,
         timeStr,
-        updateData.daily_room_url || booking.daily_room_url || undefined
+        {
+          bookingId: booking.id,
+          startTime: updateData.start_time,
+          endTime: updateData.end_time,
+          serviceName: booking.service?.name || 'Training Session',
+          trainerName: trainerName,
+          locationType: updateData.location_type,
+          travelAddress: updateData.travel_address,
+          joinUrl: updateData.daily_room_url || booking.daily_room_url || undefined,
+          notes: updateData.notes,
+        }
       )
       await sendEmail({ to: booking.client.email, ...emailData })
     }
