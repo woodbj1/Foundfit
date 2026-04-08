@@ -153,6 +153,26 @@ function renderButton(label: string, href: string, variant: 'primary' | 'seconda
   `
 }
 
+function renderActionButtons(buttons: string[]) {
+  if (buttons.length === 0) {
+    return ''
+  }
+
+  return `
+    <div style="margin-top: 28px; font-size: 0; line-height: 0;">
+      ${buttons
+        .map(
+          (button) => `
+            <span style="display: inline-block; vertical-align: top; margin: 0 12px 12px 0;">
+              ${button}
+            </span>
+          `
+        )
+        .join('')}
+    </div>
+  `
+}
+
 function renderBrandedEmail({
   title,
   bodyHtml,
@@ -198,11 +218,7 @@ function renderBrandedEmail({
           <div style="height: 6px; background: linear-gradient(90deg, #ec4899 0%, #a855f7 52%, #06b6d4 100%);"></div>
           <div style="padding: 32px 28px;">
             ${bodyHtml}
-            ${actionButtons.length > 0 ? `
-              <div style="margin-top: 28px; display: flex; flex-wrap: wrap; gap: 12px;">
-                ${actionButtons.join('')}
-              </div>
-            ` : ''}
+            ${renderActionButtons(actionButtons)}
           </div>
           <div style="padding: 18px 28px 24px; border-top: 1px solid #f3e8ff; background: #fcfaff;">
             <p style="margin: 0; font-size: 13px; line-height: 1.7; color: #6b5b7b;">
