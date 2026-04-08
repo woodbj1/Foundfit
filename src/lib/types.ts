@@ -94,11 +94,13 @@ export interface Subscription {
   id: string
   client_id: string
   service_id: string
+  trainer_id?: string | null
   stripe_subscription_id: string | null
   status: SubscriptionStatus
   current_period_start: string
   current_period_end: string
   auto_renew: boolean
+  unit_amount_cents?: number | null
   created_at: string
   service?: Service
 }
@@ -107,9 +109,11 @@ export interface SessionPack {
   id: string
   client_id: string
   service_id: string
+  trainer_id?: string | null
   total_sessions: number
   used_sessions: number
   stripe_payment_id: string | null
+  price_paid_cents?: number | null
   purchased_at: string
   expires_at: string | null
   service?: Service
@@ -151,14 +155,35 @@ export interface MealPlanPurchase {
   id: string
   client_id: string
   service_id: string
+  trainer_id?: string | null
   stripe_payment_id: string | null
   meal_plan_id: string | null
+  price_paid_cents?: number | null
   purchased_at: string
   fulfilled_at: string | null
   created_at: string
   updated_at: string
   service?: Service
   meal_plan?: MealPlan | null
+}
+
+export interface TrainerEarning {
+  id: string
+  trainer_id: string
+  client_id: string
+  service_id: string | null
+  service_name: string
+  entry_type:
+    | 'single_session_purchase'
+    | 'pack_purchase'
+    | 'meal_plan_purchase'
+    | 'subscription_charge'
+  source_reference: string
+  amount_cents: number
+  occurred_at: string
+  created_at: string
+  service?: Service | null
+  client?: Profile | null
 }
 
 export interface AppSettings {

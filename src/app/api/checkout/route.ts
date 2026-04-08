@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAppUrl } from '@/lib/app-url'
+import { requiresTrainerSelectionForService } from '@/lib/purchase-attribution'
 import { createClient } from '@/lib/supabase/server'
 import { getStripe } from '@/lib/stripe'
 import { isDailyConfigured } from '@/lib/daily'
@@ -12,7 +13,7 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const { service_id } = body
+  const { service_id, trainer_id } = body
 
   if (!service_id) {
     return NextResponse.json({ error: 'service_id is required' }, { status: 400 })
@@ -28,6 +29,31 @@ export async function POST(request: NextRequest) {
 
   if (!service) {
     return NextResponse.json({ error: 'Service not found' }, { status: 404 })
+  }
+
+  let trainerId: string | null = null
+  if (requiresTrainerSelectionForService(service)) {
+    if (!trainer_id) {
+      return NextResponse.json(
+        { error: 'Please choose a trainer before purchasing this service.' },
+        { status: 400 }
+      )
+    }
+
+    const { data: trainer } = await supabase
+      .from('trainers')
+      .select('id, is_active, onboarding_completed_at')
+      .eq('id', trainer_id)
+      .single()
+
+    if (!trainer?.is_active || !trainer.onboarding_completed_at) {
+      return NextResponse.json(
+        { error: 'That trainer is not available for new purchases right now.' },
+        { status: 400 }
+      )
+    }
+
+    trainerId = trainer.id
   }
 
   if (isVirtualService(service) && !isDailyConfigured()) {
@@ -114,6 +140,7 @@ export async function POST(request: NextRequest) {
       metadata: {
         supabase_user_id: user.id,
         service_id: service.id,
+        trainer_id: trainerId || '',
         service_type: service.type,
         fulfillment_type: service.fulfillment_type || 'booking',
       },
@@ -121,6 +148,7 @@ export async function POST(request: NextRequest) {
         metadata: {
           supabase_user_id: user.id,
           service_id: service.id,
+          trainer_id: trainerId || '',
           fulfillment_type: service.fulfillment_type || 'booking',
         },
       },
@@ -150,6 +178,7 @@ export async function POST(request: NextRequest) {
       metadata: {
         supabase_user_id: user.id,
         service_id: service.id,
+        trainer_id: trainerId || '',
         service_type: service.type,
         fulfillment_type: service.fulfillment_type || 'booking',
         session_count: service.session_count?.toString() || '1',

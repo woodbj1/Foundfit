@@ -16,6 +16,7 @@ type SessionPackWithService = {
   service_id: string
   total_sessions: number
   used_sessions: number
+  expires_at?: string | null
   service?: ServiceLike | null
 }
 
@@ -70,6 +71,18 @@ export function remainingSessions(
   return Math.max(pack.total_sessions - pack.used_sessions, 0)
 }
 
+export function isPackExpired(
+  pack?: Pick<SessionPackWithService, 'expires_at'> | null,
+  now = new Date()
+) {
+  if (!pack?.expires_at) return false
+
+  const expiresAt = new Date(pack.expires_at)
+  if (Number.isNaN(expiresAt.getTime())) return false
+
+  return expiresAt.getTime() < now.getTime()
+}
+
 export function getActiveSessionSubscriptions<T extends SubscriptionWithService>(
   subscriptions: ReadonlyArray<T> = []
 ) {
@@ -92,7 +105,7 @@ export function getActiveSessionPacks<T extends SessionPackWithService>(
   packs: ReadonlyArray<T> = []
 ) {
   return packs.filter(
-    (pack) => isSessionService(pack.service) && remainingSessions(pack) > 0
+    (pack) => !isPackExpired(pack) && isSessionService(pack.service) && remainingSessions(pack) > 0
   )
 }
 
@@ -100,10 +113,7 @@ export function getActiveLibraryPacks<T extends SessionPackWithService>(
   packs: ReadonlyArray<T> = []
 ) {
   return packs.filter(
-    (pack) =>
-      isSessionService(pack.service) &&
-      isVimeoLibraryService(pack.service) &&
-      remainingSessions(pack) > 0
+    (pack) => !isPackExpired(pack) && isVimeoLibraryService(pack.service) && remainingSessions(pack) > 0
   )
 }
 

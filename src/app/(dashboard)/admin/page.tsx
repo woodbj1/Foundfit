@@ -1,295 +1,584 @@
-'use client'
-
-import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
+import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { addMonths, format, startOfMonth, subMonths } from 'date-fns'
 import {
-  Loader2,
-  LogOut,
-  Puzzle,
-  RefreshCw,
-  Shield,
-  UserPlus,
+  Activity,
+  ArrowRight,
+  BarChart3,
+  CalendarClock,
+  CalendarRange,
+  CreditCard,
+  DollarSign,
+  Globe,
+  Package,
+  Settings,
+  UserSquare2,
   Users,
 } from 'lucide-react'
-import ServiceManagement from '@/components/admin/service-management'
-import { toast } from 'sonner'
 
-type Trainer = {
-  id: string
-  full_name: string
-  email: string
-  role: string
-}
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { getAdminDashboardData } from '@/lib/admin-reporting'
+import { formatPrice } from '@/lib/stripe'
+import { createClient } from '@/lib/supabase/server'
 
-type AddTrainerResponse = {
-  createdUser?: boolean
-  emailedCredentials?: boolean
-  error?: string
-}
-
-export default function AdminDashboardPage() {
-  const router = useRouter()
-  const [supabase] = useState(() => createClient())
-  const [trainers, setTrainers] = useState<Trainer[]>([])
-  const [loading, setLoading] = useState(true)
-  const [isAdding, setIsAdding] = useState(false)
-  const [newTrainer, setNewTrainer] = useState({ email: '', fullName: '' })
-
-  const fetchTrainers = useCallback(async () => {
-    setLoading(true)
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('role', 'trainer')
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setTrainers((data as Trainer[]) || [])
-    } catch {
-      toast.error('Could not load trainers.')
-    } finally {
-      setLoading(false)
-    }
-  }, [supabase])
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        router.push('/login')
-        return
-      }
-      void fetchTrainers()
-    })
-  }, [router, supabase, fetchTrainers])
-
-  const handleAddTrainer = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsAdding(true)
-
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 15000)
-
-    try {
-      const res = await fetch('/api/admin/trainers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: newTrainer.email,
-          fullName: newTrainer.fullName,
-        }),
-        signal: controller.signal,
-      })
-
-      const raw = await res.text()
-      let data: AddTrainerResponse | null = null
-
-      try {
-        data = raw ? JSON.parse(raw) as AddTrainerResponse : null
-      } catch {
-        data = { error: raw || 'Unexpected server response' }
-      }
-
-      if (!res.ok) throw new Error(data?.error || 'Failed to create trainer account')
-
-      const message = data?.createdUser
-        ? `${newTrainer.fullName} added.${data?.emailedCredentials ? ' Login details were emailed.' : ' Account created, but email delivery is not configured.'}`
-        : `${newTrainer.fullName} promoted to trainer and activated.`
-
-      toast.success(message)
-      setNewTrainer({ email: '', fullName: '' })
-      await fetchTrainers()
-    } catch (error: unknown) {
-      let msg = 'Could not create trainer account.'
-
-      if (error instanceof Error && error.name === 'AbortError') {
-        msg = 'Trainer creation timed out. The server route may be hanging.'
-      } else if (error instanceof Error && error.message.includes('already registered')) {
-        msg = 'This email is already registered.'
-      } else if (error instanceof Error && error.message) {
-        msg = error.message
-      }
-
-      toast.error(msg)
-      console.error('Add trainer failed:', error)
-    } finally {
-      clearTimeout(timeout)
-      setIsAdding(false)
-    }
+function parseMonthValue(value?: string) {
+  if (!value || !/^\d{4}-\d{2}$/.test(value)) {
+    return startOfMonth(new Date())
   }
 
-  if (loading && trainers.length === 0) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
-      </div>
-    )
+  const parsed = new Date(`${value}-01T12:00:00Z`)
+  if (Number.isNaN(parsed.getTime())) {
+    return startOfMonth(new Date())
   }
+
+  return startOfMonth(parsed)
+}
+
+function toMonthValue(date: Date) {
+  return format(date, 'yyyy-MM')
+}
+
+function formatDuration(seconds: number) {
+  if (!seconds) return '0m 00s'
+
+  const totalSeconds = Math.round(seconds)
+  const minutes = Math.floor(totalSeconds / 60)
+  const remainingSeconds = totalSeconds % 60
+  return `${minutes}m ${String(remainingSeconds).padStart(2, '0')}s`
+}
+
+const quickLinks = [
+  {
+    href: '/admin/bookings',
+    label: 'Bookings',
+    description: 'Approve sessions, manage issues, and review schedule changes.',
+    icon: CalendarRange,
+  },
+  {
+    href: '/admin/trainers',
+    label: 'Trainers',
+    description: 'Add trainers, verify onboarding, and monitor calendar connection status.',
+    icon: UserSquare2,
+  },
+  {
+    href: '/admin/clients',
+    label: 'Clients',
+    description: 'Review every client, their services, and session usage in one place.',
+    icon: Users,
+  },
+  {
+    href: '/admin/services',
+    label: 'Services',
+    description: 'Adjust pricing, activate offers, and manage the live catalog.',
+    icon: Package,
+  },
+  {
+    href: '/admin/settings',
+    label: 'Settings',
+    description: 'Check integrations, business rules, and launch readiness.',
+    icon: Settings,
+  },
+]
+
+export default async function AdminDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string }>
+}) {
+  const resolvedSearchParams = await searchParams
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile || profile.role !== 'admin') redirect('/dashboard')
+
+  const monthStart = parseMonthValue(resolvedSearchParams.month)
+  const previousMonth = subMonths(monthStart, 1)
+  const nextMonth = addMonths(monthStart, 1)
+  const currentMonth = startOfMonth(new Date())
+
+  const data = await getAdminDashboardData(monthStart)
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Shield className="h-6 w-6 text-purple-600" />
-          <h1 className="text-xl font-bold text-gray-800">Admin Dashboard</h1>
+    <div className="space-y-8">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+          <p className="mt-1 max-w-3xl text-muted-foreground">
+            Business-wide snapshot for {data.metrics.monthLabel}. This view is focused on revenue,
+            trainer performance, client activity, service adoption, and site traffic.
+          </p>
         </div>
-        <Button
-          variant="ghost"
-          onClick={async () => {
-            await supabase.auth.signOut()
-            router.push('/login')
-          }}
-          className="text-gray-600"
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          Logout
-        </Button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={`/admin?month=${toMonthValue(previousMonth)}`}>
+            <Button variant="outline" size="sm">
+              {format(previousMonth, 'MMM yyyy')}
+            </Button>
+          </Link>
+          {toMonthValue(monthStart) !== toMonthValue(currentMonth) ? (
+            <Link href="/admin">
+              <Button variant="outline" size="sm">
+                Current Month
+              </Button>
+            </Link>
+          ) : null}
+          {monthStart < currentMonth ? (
+            <Link href={`/admin?month=${toMonthValue(nextMonth)}`}>
+              <Button variant="outline" size="sm">
+                Next Month
+              </Button>
+            </Link>
+          ) : null}
+        </div>
       </div>
 
-      <Tabs defaultValue="trainers" className="space-y-6">
-        <TabsList className="flex w-full overflow-x-auto rounded-xl border border-gray-100 bg-white p-1 shadow-sm sm:w-auto">
-          <TabsTrigger
-            value="trainers"
-            className="rounded-lg px-6 py-2.5 font-medium transition-all data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700"
-          >
-            Manage Trainers
-          </TabsTrigger>
-          <TabsTrigger
-            value="services"
-            className="rounded-lg px-6 py-2.5 font-medium transition-all data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700"
-          >
-            Services &amp; Pricing
-          </TabsTrigger>
-          <TabsTrigger
-            value="integrations"
-            className="flex items-center gap-2 rounded-lg px-6 py-2.5 font-medium transition-all data-[state=active]:bg-purple-100 data-[state=active]:text-purple-700"
-          >
-            <Puzzle className="h-4 w-4" />
-            Integrations
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="trainers" className="focus-visible:outline-none">
-          <div className="grid gap-8 md:grid-cols-3">
-            <div className="md:col-span-1">
-              <div className="sticky top-24 rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
-                <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-gray-800">
-                  <UserPlus className="h-5 w-5 text-purple-600" />
-                  Add New Trainer
-                </h2>
-                <form onSubmit={handleAddTrainer} className="space-y-4">
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">Full Name</label>
-                    <Input
-                      value={newTrainer.fullName}
-                      onChange={(e) => setNewTrainer((prev) => ({ ...prev, fullName: e.target.value }))}
-                      placeholder="e.g. Sarah Smith"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-gray-700">Email Address</label>
-                    <Input
-                      type="email"
-                      value={newTrainer.email}
-                      onChange={(e) => setNewTrainer((prev) => ({ ...prev, email: e.target.value }))}
-                      placeholder="trainer@example.com"
-                      required
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    New users get emailed a temporary password. Existing users are upgraded in place.
-                  </p>
-                  <Button
-                    type="submit"
-                    className="w-full bg-purple-600 text-white hover:bg-purple-700"
-                    disabled={isAdding}
-                  >
-                    {isAdding ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      'Create Trainer Account'
-                    )}
-                  </Button>
-                </form>
-              </div>
-            </div>
-
-            <div className="md:col-span-2">
-              <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-                <div className="flex items-center justify-between border-b border-gray-100 p-6">
-                  <h2 className="flex items-center gap-2 text-lg font-bold text-gray-800">
-                    <Users className="h-5 w-5 text-purple-600" />
-                    Current Trainers
-                  </h2>
-                  <div className="flex items-center gap-3">
-                    <Button variant="outline" size="sm" onClick={fetchTrainers} disabled={loading}>
-                      <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                      Refresh
-                    </Button>
-                    <Badge className="bg-purple-100 text-purple-800 hover:bg-purple-100">
-                      {trainers.length} Active
-                    </Badge>
-                  </div>
-                </div>
-                {trainers.length === 0 ? (
-                  <div className="p-12 text-center text-gray-500">
-                    No trainers found. Add one to get started.
-                  </div>
-                ) : (
-                  <div className="divide-y divide-gray-100">
-                    {trainers.map((trainer) => (
-                      <div
-                        key={trainer.id}
-                        className="flex items-center justify-between p-6 transition-colors hover:bg-gray-50"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100 font-bold text-purple-600">
-                            {trainer.full_name?.charAt(0) || 'T'}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-gray-900">{trainer.full_name}</p>
-                            <p className="text-sm text-gray-500">{trainer.email}</p>
-                          </div>
-                        </div>
-                        <span className="rounded-full border border-green-200 bg-green-100 px-2 py-1 text-xs font-medium text-green-700">
-                          Trainer
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="services" className="focus-visible:outline-none">
-          <ServiceManagement />
-        </TabsContent>
-
-        <TabsContent value="integrations" className="focus-visible:outline-none">
-          <div className="pointer-events-none max-w-sm grayscale opacity-60">
-            <div className="flex flex-col items-center justify-center space-y-4 rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
-                <Puzzle className="h-6 w-6 text-gray-400" />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Card className="border-none shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-green-100">
+                <DollarSign className="h-5 w-5 text-green-700" />
               </div>
               <div>
-                <h3 className="font-semibold text-gray-500">More Coming Soon</h3>
-                <p className="text-sm text-gray-400">Future integrations will appear here.</p>
+                <p className="text-sm text-muted-foreground">Monthly Revenue</p>
+                <p className="text-2xl font-semibold">{formatPrice(data.metrics.totalRevenueCents)}</p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-none shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100">
+                <CreditCard className="h-5 w-5 text-purple-700" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Recurring Revenue</p>
+                <p className="text-2xl font-semibold">{formatPrice(data.metrics.recurringRevenueCents)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-none shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100">
+                <CalendarClock className="h-5 w-5 text-amber-700" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Booked Sessions</p>
+                <p className="text-2xl font-semibold">{data.metrics.bookedSessions}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-none shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100">
+                <Users className="h-5 w-5 text-blue-700" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Registered Clients</p>
+                <p className="text-2xl font-semibold">{data.metrics.registeredClients}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-none shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100">
+                <Activity className="h-5 w-5 text-rose-700" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Pending Approvals</p>
+                <p className="text-2xl font-semibold">{data.metrics.pendingSessions}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-none shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-100">
+                <BarChart3 className="h-5 w-5 text-cyan-700" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Completed Sessions</p>
+                <p className="text-2xl font-semibold">{data.metrics.completedSessions}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-none shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100">
+                <UserSquare2 className="h-5 w-5 text-slate-700" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Active Trainers</p>
+                <p className="text-2xl font-semibold">{data.metrics.activeTrainers}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-none shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100">
+                <Package className="h-5 w-5 text-indigo-700" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Active Services</p>
+                <p className="text-2xl font-semibold">{data.metrics.activeServices}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_360px]">
+        <Card className="border-none shadow-sm">
+          <CardHeader>
+            <CardTitle>Trainer Register</CardTitle>
+            <CardDescription>
+              Monthly session load, client counts, onboarding state, and earnings by trainer.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Trainer</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Pending</TableHead>
+                  <TableHead className="text-right">Confirmed</TableHead>
+                  <TableHead className="text-right">Completed</TableHead>
+                  <TableHead className="text-right">Clients</TableHead>
+                  <TableHead className="text-right">Earnings</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.trainers.map((trainer) => (
+                  <TableRow key={trainer.id}>
+                    <TableCell>
+                      <div className="space-y-0.5">
+                        <p className="font-medium">{trainer.fullName}</p>
+                        <p className="text-xs text-muted-foreground">{trainer.email}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant={trainer.isActive ? 'default' : 'secondary'}>
+                          {trainer.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                        <Badge variant={trainer.onboardingCompleted ? 'default' : 'secondary'}>
+                          {trainer.onboardingCompleted ? 'Setup complete' : 'Setup pending'}
+                        </Badge>
+                        <Badge variant={trainer.calendarConnected ? 'default' : 'secondary'}>
+                          {trainer.calendarConnected ? 'Calendar connected' : 'Calendar pending'}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">{trainer.pendingSessions}</TableCell>
+                    <TableCell className="text-right">{trainer.confirmedSessions}</TableCell>
+                    <TableCell className="text-right">{trainer.completedSessions}</TableCell>
+                    <TableCell className="text-right">{trainer.activeClients}</TableCell>
+                    <TableCell className="text-right font-semibold">
+                      {formatPrice(trainer.earningsCents)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-6">
+          <Card className="border-none shadow-sm">
+            <CardHeader>
+              <CardTitle>Booking Mix</CardTitle>
+              <CardDescription>Where sessions are being delivered this month.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
+                <span>Studio</span>
+                <span className="font-semibold">{data.metrics.locationMix.studio}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
+                <span>In-home</span>
+                <span className="font-semibold">{data.metrics.locationMix.home}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
+                <span>Virtual</span>
+                <span className="font-semibold">{data.metrics.locationMix.virtual}</span>
+              </div>
+              <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2">
+                <span>Pending meal plans</span>
+                <span className="font-semibold">{data.metrics.pendingMealPlans}</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-none shadow-sm">
+            <CardHeader>
+              <CardTitle>Quick Actions</CardTitle>
+              <CardDescription>Jump straight into the operational pages.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {quickLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="flex items-start justify-between rounded-xl border p-4 transition-colors hover:border-primary/40 hover:bg-primary/5"
+                >
+                  <div className="flex gap-3">
+                    <div className="mt-0.5 rounded-lg bg-primary/10 p-2 text-primary">
+                      <link.icon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="font-medium">{link.label}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{link.description}</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <Card className="border-none shadow-sm">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Globe className="h-5 w-5 text-primary" />
+            <CardTitle>Google Analytics</CardTitle>
           </div>
-        </TabsContent>
-      </Tabs>
+          <CardDescription>Last 30 days of traffic and engagement from your site.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {data.analytics.configured && !data.analytics.error ? (
+            <div className="space-y-6">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <p className="text-sm text-muted-foreground">Sessions</p>
+                  <p className="mt-1 text-2xl font-semibold">{data.analytics.sessions.toLocaleString()}</p>
+                </div>
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <p className="text-sm text-muted-foreground">Total Users</p>
+                  <p className="mt-1 text-2xl font-semibold">{data.analytics.totalUsers.toLocaleString()}</p>
+                </div>
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <p className="text-sm text-muted-foreground">New Users</p>
+                  <p className="mt-1 text-2xl font-semibold">{data.analytics.newUsers.toLocaleString()}</p>
+                </div>
+                <div className="rounded-xl border bg-muted/20 p-4">
+                  <p className="text-sm text-muted-foreground">Page Views</p>
+                  <p className="mt-1 text-2xl font-semibold">{data.analytics.pageViews.toLocaleString()}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_260px]">
+                <div className="rounded-xl border p-4">
+                  <p className="mb-3 text-sm font-medium">Top Pages</p>
+                  <div className="space-y-2">
+                    {data.analytics.topPages.length > 0 ? (
+                      data.analytics.topPages.map((page) => (
+                        <div
+                          key={page.title}
+                          className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-sm"
+                        >
+                          <span className="truncate pr-4">{page.title}</span>
+                          <span className="font-semibold">{page.pageViews.toLocaleString()}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No page-level analytics returned yet.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border p-4">
+                  <p className="text-sm text-muted-foreground">Average session duration</p>
+                  <p className="mt-1 text-2xl font-semibold">
+                    {formatDuration(data.analytics.averageSessionDurationSeconds)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-border bg-muted/20 px-6 py-12">
+              <h3 className="text-lg font-medium">Google Analytics is not connected yet</h3>
+              <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                Add GA4 Data API credentials and a property ID to load visits, users, page views, and
+                top pages here. {data.analytics.error ? `Current status: ${data.analytics.error}` : ''}
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <Card className="border-none shadow-sm">
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle>Client Register</CardTitle>
+              <CardDescription>
+                Every registered client, their assigned trainer, purchased services, and remaining sessions.
+              </CardDescription>
+            </div>
+            <Link href="/admin/clients">
+              <Button variant="outline" size="sm">
+                Open Clients Tab
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Trainer</TableHead>
+                  <TableHead>Services</TableHead>
+                  <TableHead>Pack Usage</TableHead>
+                  <TableHead className="text-right">Remaining</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.clients.map((client) => (
+                  <TableRow key={client.id}>
+                    <TableCell>
+                      <div className="space-y-0.5">
+                        <p className="font-medium">{client.fullName}</p>
+                        <p className="text-xs text-muted-foreground">{client.email}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {client.trainerNames.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {client.trainerNames.map((trainerName) => (
+                            <Badge key={trainerName} variant="secondary">
+                              {trainerName}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Unassigned</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {client.services.length > 0 ? (
+                        <div className="flex max-w-md flex-wrap gap-2">
+                          {client.services.map((service) => (
+                            <Badge key={service} variant="outline">
+                              {service}
+                            </Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">No purchases yet</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {client.packUsage.length > 0 ? (
+                        <div className="space-y-1.5">
+                          {client.packUsage.map((pack) => (
+                            <div key={`${client.id}-${pack.label}`} className="text-sm">
+                              <p className="font-medium">{pack.label}</p>
+                              <p className="text-muted-foreground">
+                                {pack.used} used · {pack.remaining} remaining
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">No packs</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">{client.remainingSessions}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        <Card className="border-none shadow-sm">
+          <CardHeader>
+            <CardTitle>Active Services</CardTitle>
+            <CardDescription>
+              Current pricing plus how many clients are actively enrolled in each offer.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.services.map((service) => (
+              <div key={service.id} className="rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{service.name}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{service.description}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold">{formatPrice(service.price)}</p>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      {service.fulfillmentType || 'booking'}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
+                    <span className="text-muted-foreground">Clients enrolled</span>
+                    <p className="font-semibold">{service.enrolledClients}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
+                    <span className="text-muted-foreground">Subscriptions</span>
+                    <p className="font-semibold">{service.activeSubscriptions}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
+                    <span className="text-muted-foreground">Active packs</span>
+                    <p className="font-semibold">{service.activePacks}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/30 px-3 py-2 text-sm">
+                    <span className="text-muted-foreground">Pending meal plans</span>
+                    <p className="font-semibold">{service.pendingMealPlans}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
+

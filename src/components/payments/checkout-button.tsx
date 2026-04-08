@@ -8,12 +8,16 @@ import { Button } from '@/components/ui/button'
 
 type CheckoutButtonProps = Omit<ComponentProps<typeof Button>, 'onClick' | 'children'> & {
   serviceId: string
+  trainerId?: string
+  trainerRequired?: boolean
   children: ReactNode
   pendingLabel?: string
 }
 
 export default function CheckoutButton({
   serviceId,
+  trainerId,
+  trainerRequired = false,
   children,
   disabled,
   pendingLabel = 'Redirecting...',
@@ -23,12 +27,17 @@ export default function CheckoutButton({
 
   async function handleCheckout() {
     try {
+      if (trainerRequired && !trainerId) {
+        toast.error('Choose a trainer before purchasing this service')
+        return
+      }
+
       setIsLoading(true)
 
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ service_id: serviceId }),
+        body: JSON.stringify({ service_id: serviceId, trainer_id: trainerId }),
       })
 
       const data = await response.json()

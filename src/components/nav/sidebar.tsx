@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Calendar,
   Clock,
+  DollarSign,
   UtensilsCrossed,
   User,
   Settings,
@@ -42,6 +43,7 @@ const trainerNav: NavItem[] = [
   { label: 'Dashboard', href: '/trainer', icon: LayoutDashboard },
   { label: 'Availability', href: '/trainer/availability', icon: Clock },
   { label: 'Bookings', href: '/trainer/bookings', icon: Calendar },
+  { label: 'Earnings', href: '/trainer/earnings', icon: DollarSign },
   { label: 'Clients', href: '/trainer/clients', icon: Users },
   { label: 'Meal Plans', href: '/trainer/meal-plans', icon: UtensilsCrossed },
 ]
