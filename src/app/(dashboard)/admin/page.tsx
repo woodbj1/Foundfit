@@ -28,6 +28,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import CarouselManagement from '@/components/admin/carousel-management'
+import LogoManagement from '@/components/admin/logo-management'
 import { getAdminDashboardData } from '@/lib/admin-reporting'
 import { formatPrice } from '@/lib/stripe'
 import { createClient } from '@/lib/supabase/server'
@@ -580,7 +581,10 @@ export default async function AdminDashboardPage({
         </Card>
       </div>
 
-      <CarouselManagement />
+      <div className="grid gap-6 xl:grid-cols-2">
+        <LogoManagement />
+        <CarouselManagement />
+      </div>
     </div>
   )
 }

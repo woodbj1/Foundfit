@@ -16,11 +16,12 @@ export default function BrandLogo({
   return (
     <span className={cn('inline-flex items-center', className)}>
       <Image
-        src="/brand/site-logo-vertical.png"
+        src="/api/public/branding/logo"
         alt="Foundation Fitness logo"
         width={1024}
         height={860}
         priority={priority}
+        unoptimized
         className={cn('h-16 w-auto shrink-0 object-contain', imageClassName)}
       />
     </span>
