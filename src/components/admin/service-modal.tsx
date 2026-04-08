@@ -219,7 +219,7 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
             )}
             {(formData.fulfillment_type === 'vimeo' || formData.fulfillment_type === 'hybrid') && (
               <p className="text-xs text-amber-700">
-                Vimeo products need either a per-service access URL here or a global deployment fallback URL.
+                Vimeo products can use the shared library URL for all subscribers, or you can set an optional service-specific override here.
               </p>
             )}
           </div>
@@ -321,7 +321,7 @@ export default function ServiceModal({ serviceToEdit, onClose, onSuccess }: Prop
                 placeholder="https://vimeo.com/showcase/..."
               />
               <p className="text-xs text-gray-500">
-                Optional per-service override for the embedded Vimeo library.
+                Optional override. Leave blank to use the shared on-demand library for all subscribers.
               </p>
             </div>
           )}

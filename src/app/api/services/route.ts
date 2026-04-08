@@ -67,7 +67,7 @@ function getServiceValidationError(options: {
     !options.accessUrl &&
     !hasConfiguredValue(process.env.VIMEO_LIBRARY_URL)
   ) {
-    return 'Video-library services need a per-service access URL or a global VIMEO_LIBRARY_URL before they can go live.'
+    return 'Video-library services need the shared VIMEO_LIBRARY_URL configured for the site, or an optional service-specific override, before they can go live.'
   }
 
   return null

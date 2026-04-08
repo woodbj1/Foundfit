@@ -155,8 +155,10 @@ export default function ServiceManagement() {
                             {service.fulfillment_type.replace(/_/g, ' ')}
                           </p>
                         )}
-                        {(service.fulfillment_type === 'vimeo' || service.fulfillment_type === 'hybrid') && !service.access_url && (
-                          <p className="mt-1 text-xs text-amber-600">No per-service video URL set</p>
+                        {(service.fulfillment_type === 'vimeo' || service.fulfillment_type === 'hybrid') && (
+                          <p className="mt-1 text-xs text-purple-600">
+                            {service.access_url ? 'Using a custom video-library URL' : 'Using the shared video library for all subscribers'}
+                          </p>
                         )}
                       </div>
                     </td>
