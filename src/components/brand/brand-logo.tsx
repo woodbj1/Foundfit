@@ -19,7 +19,7 @@ export default function BrandLogo({
         src="/brand/site-logo-vertical.png"
         alt="Foundation Fitness logo"
         width={1024}
-        height={1024}
+        height={860}
         priority={priority}
         className={cn('h-16 w-auto shrink-0 object-contain', imageClassName)}
       />
