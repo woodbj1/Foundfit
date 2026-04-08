@@ -67,7 +67,7 @@ function getEmailHomeUrl() {
 }
 
 function getLogoUrl() {
-  return new URL('/brand/site-logo-vertical.png', getEmailAssetBaseUrl()).toString()
+  return new URL('/brand/email-logo-white.png', getEmailAssetBaseUrl()).toString()
 }
 
 function escapeHtml(value: string) {
@@ -150,7 +150,7 @@ function renderBrandedEmail({
               src="${getLogoUrl()}"
               alt="${EMAIL_BRAND_NAME}"
               width="172"
-              height="172"
+              height="155"
               style="display: block; margin: 0 auto 18px; width: 172px; height: auto; max-width: 100%;"
             />
             <div style="font-size: 11px; line-height: 1.4; letter-spacing: 0.22em; text-transform: uppercase; color: #f5d0fe; font-weight: 700;">
