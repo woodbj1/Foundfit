@@ -343,7 +343,8 @@ export async function POST(request: NextRequest) {
         clientProfile?.full_name || 'A client',
         dateLabel,
         timeLabel,
-        booking.id
+        booking.id,
+        booking.location_type
       )
       await sendEmail({
         to: trainer.profile.email,

@@ -1,5 +1,6 @@
 import { Resend } from 'resend'
 import { createSessionCalendarInvite } from '@/lib/calendar-invite'
+import type { LocationType } from '@/lib/types'
 import { SITE } from '@/lib/site-config'
 
 let resend: Resend | null = null
@@ -95,6 +96,18 @@ function getTrainerBookingsLink(options?: {
   }
 
   return url.toString()
+}
+
+function getEmailLocationLabel(locationType?: LocationType | string | null) {
+  switch (locationType) {
+    case 'virtual':
+      return 'Virtual'
+    case 'travel':
+      return "Client's Home"
+    case 'gym':
+    default:
+      return 'Studio'
+  }
 }
 
 function escapeHtml(value: string) {
@@ -261,7 +274,13 @@ export async function sendEmail({ to, subject, html, attachments }: EmailOptions
   }
 }
 
-export function bookingRequestEmail(clientName: string, date: string, time: string, bookingId: string) {
+export function bookingRequestEmail(
+  clientName: string,
+  date: string,
+  time: string,
+  bookingId: string,
+  locationType?: LocationType | string | null
+) {
   return {
     subject: `New Booking Request from ${clientName}`,
     html: renderBrandedEmail({
@@ -274,6 +293,7 @@ export function bookingRequestEmail(clientName: string, date: string, time: stri
           { label: 'Client', value: clientName },
           { label: 'Date', value: date },
           { label: 'Time', value: time },
+          { label: 'Location', value: getEmailLocationLabel(locationType) },
         ])}
       `,
       actions: [
@@ -412,7 +432,8 @@ export function bookingRescheduleRequestEmail(
   clientName: string,
   date: string,
   time: string,
-  bookingId: string
+  bookingId: string,
+  locationType?: LocationType | string | null
 ) {
   return {
     subject: `Reschedule Request from ${clientName}`,
@@ -426,6 +447,7 @@ export function bookingRescheduleRequestEmail(
           { label: 'Client', value: clientName },
           { label: 'New Date', value: date },
           { label: 'New Time', value: time },
+          { label: 'Location', value: getEmailLocationLabel(locationType) },
         ])}
         <p style="margin: 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
           Open your trainer bookings page to approve or decline the updated request.

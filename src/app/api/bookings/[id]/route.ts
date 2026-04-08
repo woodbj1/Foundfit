@@ -515,7 +515,13 @@ export async function PUT(
       const trainerEmailData =
         booking.status === 'approved'
           ? bookingRescheduledNoticeEmail(trainerName, clientName, dateStr, timeStr)
-          : bookingRescheduleRequestEmail(clientName, dateStr, timeStr, booking.id)
+          : bookingRescheduleRequestEmail(
+              clientName,
+              dateStr,
+              timeStr,
+              booking.id,
+              updateData.location_type
+            )
       await sendEmail({ to: trainerEmail, ...trainerEmailData })
     }
   } catch (emailError) {
