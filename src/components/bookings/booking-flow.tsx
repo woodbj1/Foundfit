@@ -33,10 +33,15 @@ interface BookingTrainer {
   profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'timezone'>
 }
 
-export type BookingServiceOption = BookableServiceOption | {
-  service: BookableServiceOption['service']
-  accessType: 'existing'
-  remainingSessions: number | null
+export type BookingServiceOption = (
+  | BookableServiceOption
+  | {
+      service: BookableServiceOption['service']
+      accessType: 'existing'
+      remainingSessions: number | null
+    }
+) & {
+  trainerId?: string | null
 }
 
 export interface RescheduleBookingState {
@@ -56,6 +61,7 @@ interface Props {
   travelFee: number
   bookingWindowDays: number
   bookableServices: BookingServiceOption[]
+  virtualLocationEnabled: boolean
   rescheduleBooking?: RescheduleBookingState | null
 }
 
@@ -64,6 +70,7 @@ export default function BookingFlow({
   travelFee,
   bookingWindowDays,
   bookableServices,
+  virtualLocationEnabled,
   rescheduleBooking = null,
 }: Props) {
   const router = useRouter()
@@ -87,6 +94,14 @@ export default function BookingFlow({
   const [loading, setLoading] = useState(false)
   const [slotsLoading, setSlotsLoading] = useState(false)
   const isRescheduleMode = Boolean(rescheduleBooking)
+  const virtualOnlyBooking = selectedService ? isVirtualService(selectedService.service) : false
+  const supportsVirtualLocation = Boolean(
+    selectedService &&
+    selectedService.service.is_session !== false &&
+    virtualLocationEnabled &&
+    !virtualOnlyBooking
+  )
+  const isVirtualLocationBooking = virtualOnlyBooking || locationType === 'virtual'
 
   useEffect(() => {
     if (!selectedService || !selectedTrainer || !date) return
@@ -142,8 +157,7 @@ export default function BookingFlow({
   async function handleBook() {
     if (!selectedService || !selectedTrainer || !selectedSlot) return
 
-    const virtualBooking = isVirtualService(selectedService.service)
-    if (!virtualBooking && locationType === 'travel' && !travelAddress.trim()) {
+    if (!isVirtualLocationBooking && locationType === 'travel' && !travelAddress.trim()) {
       toast.error('Please enter your address for in-home training')
       return
     }
@@ -158,8 +172,11 @@ export default function BookingFlow({
           service_id: selectedService.service.id,
           trainer_id: selectedTrainer.id,
           start_time: selectedSlot.start,
-          location_type: virtualBooking ? 'virtual' : locationType,
-          travel_address: !virtualBooking && locationType === 'travel' ? travelAddress : undefined,
+          location_type: isVirtualLocationBooking ? 'virtual' : locationType,
+          travel_address:
+            !isVirtualLocationBooking && locationType === 'travel'
+              ? travelAddress
+              : undefined,
           notes: notes || undefined,
         }),
       })
@@ -182,10 +199,51 @@ export default function BookingFlow({
     }
   }
 
-  const virtualBooking = selectedService ? isVirtualService(selectedService.service) : false
   const selectedServiceSessionsLeft = selectedService?.remainingSessions ?? 0
-  const showTrainerStep = trainers.length > 0
+  const trainerOptionsForSelectedService = selectedService?.trainerId
+    ? trainers.filter((trainer) => trainer.id === selectedService.trainerId)
+    : trainers
+  const showTrainerStep = trainerOptionsForSelectedService.length > 0
   const selectedTrainerTimezone = selectedTrainer?.profile?.timezone || 'America/New_York'
+
+  useEffect(() => {
+    if (!selectedService) return
+
+    const nextTrainerOptions = selectedService.trainerId
+      ? trainers.filter((trainer) => trainer.id === selectedService.trainerId)
+      : trainers
+
+    if (nextTrainerOptions.length === 1) {
+      if (selectedTrainer?.id !== nextTrainerOptions[0].id) {
+        setSelectedTrainer(nextTrainerOptions[0])
+      }
+      return
+    }
+
+    if (
+      selectedTrainer &&
+      nextTrainerOptions.some((trainer) => trainer.id === selectedTrainer.id)
+    ) {
+      return
+    }
+
+    setSelectedTrainer(null)
+  }, [selectedService, selectedTrainer, trainers])
+
+  useEffect(() => {
+    if (!selectedService) return
+
+    if (virtualOnlyBooking) {
+      if (locationType !== 'virtual') {
+        setLocationType('virtual')
+      }
+      return
+    }
+
+    if (!supportsVirtualLocation && locationType === 'virtual') {
+      setLocationType('gym')
+    }
+  }, [locationType, selectedService, supportsVirtualLocation, virtualOnlyBooking])
 
   return (
     <div className="space-y-6">
@@ -238,7 +296,7 @@ export default function BookingFlow({
                     setDate(undefined)
                     setSlots([])
                     setSelectedSlot(null)
-                    setLocationType('gym')
+                    setLocationType(isVirtualService(option.service) ? 'virtual' : 'gym')
                     setTravelAddress('')
                   }}
                   className={`flex items-start gap-3 p-4 rounded-xl border text-left transition-colors ${
@@ -290,7 +348,7 @@ export default function BookingFlow({
 
       {bookableServices.length === 1 && selectedService && (
         <div className="flex flex-wrap items-center gap-3 p-3 bg-muted/50 rounded-lg w-fit">
-          {virtualBooking ? (
+          {virtualOnlyBooking ? (
             <Video className="h-4 w-4 text-muted-foreground" />
           ) : (
             <Building2 className="h-4 w-4 text-muted-foreground" />
@@ -311,7 +369,7 @@ export default function BookingFlow({
             Select Trainer
           </h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {trainers.map((trainer) => {
+            {trainerOptionsForSelectedService.map((trainer) => {
               const isSelected = selectedTrainer?.id === trainer.id
               const name = trainer.profile?.full_name ?? 'Trainer'
 
@@ -349,7 +407,7 @@ export default function BookingFlow({
         </div>
       )}
 
-      {trainers.length === 0 && (
+      {trainerOptionsForSelectedService.length === 0 && (
         <p className="text-muted-foreground text-sm">No trainers are currently available.</p>
       )}
 
@@ -447,7 +505,7 @@ export default function BookingFlow({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
-              {virtualBooking ? (
+              {virtualOnlyBooking ? (
                 <div className="space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-4">
                   <div className="flex items-center gap-2 text-sm font-medium text-blue-900">
                     <Video className="h-4 w-4" />
@@ -461,7 +519,7 @@ export default function BookingFlow({
               ) : (
                 <div className="space-y-3">
                   <Label>Location</Label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className={`grid gap-2 ${supportsVirtualLocation ? 'grid-cols-3' : 'grid-cols-2'}`}>
                     <Button
                       variant={locationType === 'gym' ? 'default' : 'outline'}
                       onClick={() => setLocationType('gym')}
@@ -480,6 +538,17 @@ export default function BookingFlow({
                       <MapPin className="h-4 w-4" />
                       My Home
                     </Button>
+                    {supportsVirtualLocation ? (
+                      <Button
+                        variant={locationType === 'virtual' ? 'default' : 'outline'}
+                        onClick={() => setLocationType('virtual')}
+                        className="gap-2"
+                        size="sm"
+                      >
+                        <Video className="h-4 w-4" />
+                        Virtual
+                      </Button>
+                    ) : null}
                   </div>
                   {locationType === 'travel' && (
                     <div className="space-y-2">
@@ -515,13 +584,13 @@ export default function BookingFlow({
                     <p>Time: {formatBookingTimeRange(selectedSlot.start, selectedSlot.end, selectedTrainerTimezone)}</p>
                     <p>Trainer: {selectedTrainer.profile?.full_name ?? 'Trainer'}</p>
                     <p>
-                      Location: {virtualBooking
+                      Location: {isVirtualLocationBooking
                         ? 'Daily virtual session'
                         : locationType === 'gym'
                           ? 'Studio'
                           : 'In-home training'}
                     </p>
-                    {!virtualBooking && locationType === 'travel' && travelFee > 0 && (
+                    {!isVirtualLocationBooking && locationType === 'travel' && travelFee > 0 && (
                       <Badge variant="secondary" className="mt-1">
                         +${(travelFee / 100).toFixed(2)} travel fee
                       </Badge>

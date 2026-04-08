@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
+import { getEarningEntryType } from '@/lib/purchase-attribution'
 import { formatPrice, getStripe } from '@/lib/stripe'
 import { createAdminClient } from '@/lib/supabase/server'
 import { sendEmail, paymentConfirmationEmail } from '@/lib/email'
@@ -37,6 +38,82 @@ function mapStripeSubscriptionStatus(status: Stripe.Subscription.Status): Subscr
     default:
       return 'active'
   }
+}
+
+function getServiceNameFromRelation(serviceRelation: unknown) {
+  if (Array.isArray(serviceRelation)) {
+    const firstService = serviceRelation[0]
+    if (
+      firstService &&
+      typeof firstService === 'object' &&
+      'name' in firstService &&
+      typeof firstService.name === 'string'
+    ) {
+      return firstService.name
+    }
+
+    return null
+  }
+
+  if (
+    serviceRelation &&
+    typeof serviceRelation === 'object' &&
+    'name' in serviceRelation &&
+    typeof serviceRelation.name === 'string'
+  ) {
+    return serviceRelation.name
+  }
+
+  return null
+}
+
+async function recordTrainerEarning({
+  supabase,
+  trainerId,
+  clientId,
+  serviceId,
+  serviceName,
+  entryType,
+  sourceReference,
+  amountCents,
+  occurredAt,
+}: {
+  supabase: Awaited<ReturnType<typeof createAdminClient>>
+  trainerId?: string | null
+  clientId?: string | null
+  serviceId?: string | null
+  serviceName?: string | null
+  entryType:
+    | 'single_session_purchase'
+    | 'pack_purchase'
+    | 'meal_plan_purchase'
+    | 'subscription_charge'
+    | null
+  sourceReference?: string | null
+  amountCents?: number | null
+  occurredAt?: string | null
+}) {
+  if (!trainerId || !clientId || !entryType || !sourceReference || !serviceName) return
+
+  await supabase
+    .from('trainer_earnings')
+    .upsert(
+      {
+        trainer_id: trainerId,
+        client_id: clientId,
+        service_id: serviceId || null,
+        service_name: serviceName,
+        entry_type: entryType,
+        source_reference: sourceReference,
+        amount_cents: amountCents || 0,
+        occurred_at: occurredAt || new Date().toISOString(),
+      },
+      {
+        onConflict: 'entry_type,source_reference',
+        ignoreDuplicates: false,
+      }
+    )
+    .throwOnError()
 }
 
 export async function POST(request: NextRequest) {
@@ -77,6 +154,7 @@ export async function POST(request: NextRequest) {
         const userId = session.metadata?.supabase_user_id
         const serviceId = session.metadata?.service_id
         const serviceType = session.metadata?.service_type
+        const trainerId = session.metadata?.trainer_id || null
 
         if (!userId || !serviceId) break
 
@@ -85,6 +163,7 @@ export async function POST(request: NextRequest) {
           const sub = (await stripe.subscriptions.retrieve(subscriptionId)) as Stripe.Subscription
           const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriod(sub)
           const status = mapStripeSubscriptionStatus(sub.status)
+          const unitAmountCents = sub.items.data[0]?.price?.unit_amount ?? null
 
           const { data: existingSubscription } = await supabase
             .from('subscriptions')
@@ -95,11 +174,13 @@ export async function POST(request: NextRequest) {
           const subscriptionPayload = {
             client_id: userId,
             service_id: serviceId,
+            trainer_id: trainerId,
             stripe_subscription_id: subscriptionId,
             status,
             current_period_start: currentPeriodStart,
             current_period_end: currentPeriodEnd,
             auto_renew: !sub.cancel_at_period_end,
+            unit_amount_cents: unitAmountCents,
           }
 
           if (existingSubscription?.id) {
@@ -129,9 +210,11 @@ export async function POST(request: NextRequest) {
           const sessionPackPayload = {
             client_id: userId,
             service_id: serviceId,
+            trainer_id: trainerId,
             total_sessions: sessionCount,
             used_sessions: 0,
             stripe_payment_id: paymentIntentId,
+            price_paid_cents: session.amount_total ?? 0,
           }
 
           if (existingPack?.id) {
@@ -160,7 +243,9 @@ export async function POST(request: NextRequest) {
           const purchasePayload = {
             client_id: userId,
             service_id: serviceId,
+            trainer_id: trainerId,
             stripe_payment_id: paymentIntentId,
+            price_paid_cents: session.amount_total ?? 0,
           }
 
           if (existingPurchase?.id) {
@@ -189,6 +274,20 @@ export async function POST(request: NextRequest) {
           .eq('id', serviceId)
           .single()
 
+        if (serviceType !== 'unlimited') {
+          await recordTrainerEarning({
+            supabase,
+            trainerId,
+            clientId: userId,
+            serviceId,
+            serviceName: service?.name || 'Service',
+            entryType: getEarningEntryType(serviceType),
+            sourceReference: (session.payment_intent as string | null) || session.id,
+            amountCents: session.amount_total ?? service?.price ?? 0,
+            occurredAt: session.created ? new Date(session.created * 1000).toISOString() : null,
+          })
+        }
+
         if (profile?.email && service) {
           const emailData = paymentConfirmationEmail(
             profile.full_name || 'there',
@@ -209,17 +308,40 @@ export async function POST(request: NextRequest) {
         if (subscriptionId) {
           const sub = (await stripe.subscriptions.retrieve(subscriptionId)) as Stripe.Subscription
           const { currentPeriodStart, currentPeriodEnd } = getSubscriptionPeriod(sub)
+          const unitAmountCents = sub.items.data[0]?.price?.unit_amount ?? invoice.amount_paid ?? null
 
-          await supabase
+          const { data: updatedSubscriptions } = await supabase
             .from('subscriptions')
             .update({
               status: mapStripeSubscriptionStatus(sub.status),
               current_period_start: currentPeriodStart,
               current_period_end: currentPeriodEnd,
               auto_renew: !sub.cancel_at_period_end,
+              unit_amount_cents: unitAmountCents,
             })
             .eq('stripe_subscription_id', subscriptionId)
+            .select('client_id, trainer_id, service_id, service:services(name)')
             .throwOnError()
+
+          const updatedSubscription = Array.isArray(updatedSubscriptions)
+            ? updatedSubscriptions[0]
+            : updatedSubscriptions
+
+          await recordTrainerEarning({
+            supabase,
+            trainerId: updatedSubscription?.trainer_id || null,
+            clientId: updatedSubscription?.client_id || null,
+            serviceId: updatedSubscription?.service_id || null,
+            serviceName: getServiceNameFromRelation(updatedSubscription?.service),
+            entryType: 'subscription_charge',
+            sourceReference: invoice.id,
+            amountCents: invoice.amount_paid ?? unitAmountCents ?? 0,
+            occurredAt: invoice.status_transitions.paid_at
+              ? new Date(invoice.status_transitions.paid_at * 1000).toISOString()
+              : invoice.created
+                ? new Date(invoice.created * 1000).toISOString()
+                : null,
+          })
         }
         break
       }

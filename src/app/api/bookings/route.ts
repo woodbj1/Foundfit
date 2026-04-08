@@ -68,7 +68,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'This product is not bookable.' }, { status: 400 })
   }
 
-  const isVirtualBooking = isVirtualService(service)
+  const requestedVirtualLocation = location_type === 'virtual'
+  const isVirtualBooking = requestedVirtualLocation || isVirtualService(service)
   if (isVirtualBooking && !isDailyConfigured()) {
     return NextResponse.json(
       { error: 'Virtual sessions are not available until Daily is configured.' },
@@ -101,11 +102,6 @@ export async function POST(request: NextRequest) {
     targetTrainerId = firstTrainer.id
   }
 
-  const hasAccess = await checkClientAccess(supabase, user.id, service.id, start_time)
-  if (!hasAccess.allowed) {
-    return NextResponse.json({ error: hasAccess.reason }, { status: 400 })
-  }
-
   const { data: trainerRecord } = await admin
       .from('trainers')
       .select('id, user_id, is_active, onboarding_completed_at')
@@ -125,6 +121,17 @@ export async function POST(request: NextRequest) {
       { error: 'This trainer is still finishing setup and cannot accept bookings yet.' },
       { status: 400 }
     )
+  }
+
+  const hasAccess = await checkClientAccess(
+    supabase,
+    user.id,
+    service.id,
+    targetTrainerId,
+    start_time
+  )
+  if (!hasAccess.allowed) {
+    return NextResponse.json({ error: hasAccess.reason }, { status: 400 })
   }
 
   const startDate = new Date(start_time)
@@ -353,18 +360,29 @@ async function checkClientAccess(
   supabase: SupabaseClient,
   clientId: string,
   serviceId: string,
+  trainerId: string,
   startTime: string
 ): Promise<{ allowed: boolean; reason?: string }> {
-  const { data: subscription } = await supabase
+  const { data: subscriptions } = await supabase
     .from('subscriptions')
     .select('*, service:services(*)')
     .eq('client_id', clientId)
     .eq('status', 'active')
     .eq('service_id', serviceId)
-    .limit(1)
-    .maybeSingle()
+    .order('created_at', { ascending: false })
 
-  const normalizedSubscription = subscription as SubscriptionWithService | null
+  const normalizedSubscriptions = (subscriptions as SubscriptionWithService[] | null) ?? []
+  const normalizedSubscription =
+    normalizedSubscriptions.find(
+      (subscription) => !subscription.trainer_id || subscription.trainer_id === trainerId
+    ) ?? null
+
+  if (!normalizedSubscription && normalizedSubscriptions.length > 0) {
+    return {
+      allowed: false,
+      reason: 'This package is assigned to a different trainer. Choose the trainer selected at purchase.',
+    }
+  }
 
   if (normalizedSubscription) {
     const maxWeekly = normalizedSubscription.service?.max_weekly_bookings || 3
@@ -396,12 +414,20 @@ async function checkClientAccess(
   const now = new Date()
   const activePack = (packs as SessionPack[] | null)?.find(
     (pack) =>
+      (!pack.trainer_id || pack.trainer_id === trainerId) &&
       pack.used_sessions < pack.total_sessions &&
       (!pack.expires_at || new Date(pack.expires_at) > now)
   )
 
   if (activePack) {
     return { allowed: true }
+  }
+
+  if ((packs?.length || 0) > 0) {
+    return {
+      allowed: false,
+      reason: 'This package is assigned to a different trainer. Choose the trainer selected at purchase.',
+    }
   }
 
   return {

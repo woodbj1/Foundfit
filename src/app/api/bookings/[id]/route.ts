@@ -83,7 +83,8 @@ export async function PATCH(
     daily_room_url?: string
     google_calendar_event_id?: string
   } = { status }
-  const isVirtualBooking = isVirtualService(booking.service)
+  const isVirtualBooking =
+    booking.location_type === 'virtual' || isVirtualService(booking.service)
 
   if (status === 'approved') {
     const startDate = new Date(booking.start_time)
@@ -336,8 +337,11 @@ export async function PUT(
     )
   }
 
-  const isVirtualBooking = isVirtualService(booking.service)
-  const nextLocationType = isVirtualBooking ? 'virtual' : location_type || booking.location_type || 'gym'
+  const serviceIsVirtualOnly = isVirtualService(booking.service)
+  const nextLocationType = serviceIsVirtualOnly
+    ? 'virtual'
+    : location_type || booking.location_type || 'gym'
+  const isVirtualBooking = nextLocationType === 'virtual' || serviceIsVirtualOnly
   const nextTravelAddress =
     !isVirtualBooking && nextLocationType === 'travel'
       ? travel_address?.trim() || booking.travel_address || null
@@ -395,6 +399,11 @@ export async function PUT(
     location_type: nextLocationType,
     travel_address: nextTravelAddress,
     notes: notes?.trim() || null,
+  }
+
+  if (!isVirtualBooking) {
+    updateData.daily_room_name = null
+    updateData.daily_room_url = null
   }
 
   if (booking.status === 'approved') {
