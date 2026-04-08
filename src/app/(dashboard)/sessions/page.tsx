@@ -78,6 +78,14 @@ function BookingCard({ booking }: { booking: SessionBooking }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={statusColor(booking.status)}>{booking.status}</Badge>
+          {['pending', 'approved'].includes(booking.status) ? (
+            <Link
+              href={`/book?reschedule=${booking.id}`}
+              className="inline-flex h-7 items-center justify-center rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium text-foreground transition-colors hover:bg-muted"
+            >
+              Reschedule
+            </Link>
+          ) : null}
           {booking.status === 'approved' && isVirtualLocation(booking.location_type) ? (
             <JoinDailyButton bookingId={booking.id} />
           ) : null}

@@ -285,10 +285,16 @@ export default async function ClientDashboard() {
                           {isVirtualLocation(booking.location_type) ? ' • Virtual session' : ''}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                      <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
                         <Badge variant={booking.status === 'approved' ? 'default' : 'secondary'}>
                           {booking.status === 'approved' ? 'Confirmed' : 'Pending'}
                         </Badge>
+                        <Link
+                          href={`/book?reschedule=${booking.id}`}
+                          className="inline-flex h-7 items-center justify-center rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium text-foreground transition-colors hover:bg-muted"
+                        >
+                          Reschedule
+                        </Link>
                         {booking.status === 'approved' && isVirtualLocation(booking.location_type) ? (
                           <JoinDailyButton bookingId={booking.id} />
                         ) : null}

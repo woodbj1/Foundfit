@@ -315,6 +315,88 @@ export function bookingCancelledEmail(
   }
 }
 
+export function bookingRescheduleRequestEmail(clientName: string, date: string, time: string) {
+  return {
+    subject: `Reschedule Request from ${clientName}`,
+    html: renderBrandedEmail({
+      title: 'Reschedule Request',
+      bodyHtml: `
+        <p style="margin: 0; font-size: 16px; line-height: 1.7; color: #332145;">
+          <strong>${escapeHtml(clientName)}</strong> picked a new time for an existing session request.
+        </p>
+        ${renderDetails([
+          { label: 'Client', value: clientName },
+          { label: 'New Date', value: date },
+          { label: 'New Time', value: time },
+        ])}
+        <p style="margin: 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
+          Open your trainer bookings page to approve or decline the updated request.
+        </p>
+      `,
+      ctaLabel: 'Review Request',
+      ctaHref: getAppLink('/trainer/bookings'),
+    }),
+  }
+}
+
+export function bookingRescheduledEmail(
+  clientName: string,
+  date: string,
+  time: string,
+  joinUrl?: string
+) {
+  return {
+    subject: 'Your Session Has Been Rescheduled',
+    html: renderBrandedEmail({
+      title: 'Session Rescheduled',
+      bodyHtml: `
+        <p style="margin: 0; font-size: 16px; line-height: 1.7; color: #332145;">
+          Hey ${escapeHtml(clientName)}, your session has been moved to a new time.
+        </p>
+        ${renderDetails([
+          { label: 'New Date', value: date },
+          { label: 'New Time', value: time },
+        ])}
+        <p style="margin: 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
+          ${joinUrl
+            ? 'Your existing Daily join link is still ready below.'
+            : 'You can review the updated session details any time from your dashboard.'}
+        </p>
+      `,
+      ctaLabel: joinUrl ? 'Join Virtual Session' : 'View Sessions',
+      ctaHref: joinUrl || getAppLink('/sessions'),
+      secondaryCtaLabel: joinUrl ? 'Open Dashboard' : undefined,
+      secondaryCtaHref: joinUrl ? getAppLink('/dashboard') : undefined,
+    }),
+  }
+}
+
+export function bookingRescheduledNoticeEmail(
+  trainerName: string,
+  clientName: string,
+  date: string,
+  time: string
+) {
+  return {
+    subject: `Session Rescheduled by ${clientName}`,
+    html: renderBrandedEmail({
+      title: 'Session Rescheduled',
+      bodyHtml: `
+        <p style="margin: 0; font-size: 16px; line-height: 1.7; color: #332145;">
+          Hi ${escapeHtml(trainerName)}, <strong>${escapeHtml(clientName)}</strong> moved an upcoming session.
+        </p>
+        ${renderDetails([
+          { label: 'Client', value: clientName },
+          { label: 'New Date', value: date },
+          { label: 'New Time', value: time },
+        ])}
+      `,
+      ctaLabel: 'Open Trainer Bookings',
+      ctaHref: getAppLink('/trainer/bookings'),
+    }),
+  }
+}
+
 export function paymentConfirmationEmail(clientName: string, serviceName: string, amount: string) {
   return {
     subject: `Payment Confirmed - ${EMAIL_BRAND_NAME}`,

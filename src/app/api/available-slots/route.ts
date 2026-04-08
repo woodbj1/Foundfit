@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
   const dateStr = searchParams.get('date')
   const trainerId = searchParams.get('trainer_id')
   const serviceId = searchParams.get('service_id')
+  const excludeBookingId = searchParams.get('exclude_booking_id')
 
   if (!dateStr) {
     return NextResponse.json({ error: 'date is required' }, { status: 400 })
@@ -152,13 +153,19 @@ export async function GET(request: NextRequest) {
   // Get existing bookings for this day
   const { start: dayStart, end: dayEnd } = getUtcRangeForDateInTimeZone(dateStr, trainerTimezone)
 
-  const { data: existingBookings } = await admin
+  let existingBookingsQuery = admin
     .from('bookings')
-    .select('start_time, end_time')
+    .select('id, start_time, end_time')
     .eq('trainer_id', targetTrainerId)
     .in('status', ['pending', 'approved'])
     .gte('start_time', dayStart.toISOString())
     .lt('start_time', dayEnd.toISOString())
+
+  if (excludeBookingId) {
+    existingBookingsQuery = existingBookingsQuery.neq('id', excludeBookingId)
+  }
+
+  const { data: existingBookings } = await existingBookingsQuery
 
   // Get Google Calendar busy slots
   let gcalBusy: { start: string; end: string }[] = []

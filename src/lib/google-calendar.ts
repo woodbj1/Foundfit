@@ -194,6 +194,46 @@ export async function createTrainerCalendarEvent(
   return response.data.id || null
 }
 
+export async function updateTrainerCalendarEvent(
+  trainerId: string,
+  eventId: string,
+  summary: string,
+  description: string,
+  startTime: string,
+  endTime: string,
+  location?: string,
+  timeZone = 'America/New_York'
+): Promise<string | null> {
+  const connection = await getTrainerCalendarConnection(trainerId)
+  if (!connection) {
+    return null
+  }
+
+  const response = await getCalendarApi(connection).events.update({
+    calendarId: getCalendarId(connection.google_calendar_id),
+    eventId,
+    requestBody: {
+      summary,
+      description,
+      location,
+      start: {
+        dateTime: startTime,
+        timeZone,
+      },
+      end: {
+        dateTime: endTime,
+        timeZone,
+      },
+      reminders: {
+        useDefault: false,
+        overrides: [{ method: 'popup', minutes: 30 }],
+      },
+    },
+  })
+
+  return response.data.id || null
+}
+
 export async function deleteTrainerCalendarEvent(trainerId: string, eventId: string): Promise<void> {
   const connection = await getTrainerCalendarConnection(trainerId)
   if (!connection) {

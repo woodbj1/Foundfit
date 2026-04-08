@@ -33,11 +33,30 @@ interface BookingTrainer {
   profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'timezone'>
 }
 
+export type BookingServiceOption = BookableServiceOption | {
+  service: BookableServiceOption['service']
+  accessType: 'existing'
+  remainingSessions: number | null
+}
+
+export interface RescheduleBookingState {
+  id: string
+  startTime: string
+  endTime: string
+  status: 'pending' | 'approved'
+  locationType: LocationType
+  travelAddress: string | null
+  notes: string | null
+  trainerName: string
+  serviceName: string
+}
+
 interface Props {
   trainers: BookingTrainer[]
   travelFee: number
   bookingWindowDays: number
-  bookableServices: BookableServiceOption[]
+  bookableServices: BookingServiceOption[]
+  rescheduleBooking?: RescheduleBookingState | null
 }
 
 export default function BookingFlow({
@@ -45,23 +64,29 @@ export default function BookingFlow({
   travelFee,
   bookingWindowDays,
   bookableServices,
+  rescheduleBooking = null,
 }: Props) {
   const router = useRouter()
-  const [selectedService, setSelectedService] = useState<BookableServiceOption | null>(
+  const [selectedService, setSelectedService] = useState<BookingServiceOption | null>(
     bookableServices.length === 1 ? bookableServices[0] : null
   )
   const [selectedTrainer, setSelectedTrainer] = useState<BookingTrainer | null>(
     trainers.length === 1 ? trainers[0] : null
   )
-  const [date, setDate] = useState<Date | undefined>(undefined)
+  const [date, setDate] = useState<Date | undefined>(
+    rescheduleBooking ? new Date(rescheduleBooking.startTime) : undefined
+  )
   const [slots, setSlots] = useState<TimeSlot[]>([])
   const [slotsMessage, setSlotsMessage] = useState<string | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null)
-  const [locationType, setLocationType] = useState<LocationType>('gym')
-  const [travelAddress, setTravelAddress] = useState('')
-  const [notes, setNotes] = useState('')
+  const [locationType, setLocationType] = useState<LocationType>(
+    rescheduleBooking?.locationType || 'gym'
+  )
+  const [travelAddress, setTravelAddress] = useState(rescheduleBooking?.travelAddress || '')
+  const [notes, setNotes] = useState(rescheduleBooking?.notes || '')
   const [loading, setLoading] = useState(false)
   const [slotsLoading, setSlotsLoading] = useState(false)
+  const isRescheduleMode = Boolean(rescheduleBooking)
 
   useEffect(() => {
     if (!selectedService || !selectedTrainer || !date) return
@@ -82,6 +107,9 @@ export default function BookingFlow({
           trainer_id: activeTrainer.id,
           service_id: activeService.service.id,
         })
+        if (rescheduleBooking?.id) {
+          params.set('exclude_booking_id', rescheduleBooking.id)
+        }
         const res = await fetch(`/api/available-slots?${params}`)
         const data = await res.json()
         if (data.slots) {
@@ -96,7 +124,20 @@ export default function BookingFlow({
     }
 
     loadSlots()
-  }, [date, selectedService, selectedTrainer])
+  }, [date, rescheduleBooking?.id, selectedService, selectedTrainer])
+
+  useEffect(() => {
+    if (!rescheduleBooking || !date || selectedSlot || slots.length === 0) return
+
+    const rescheduleDateKey = format(new Date(rescheduleBooking.startTime), 'yyyy-MM-dd')
+    const selectedDateKey = format(date, 'yyyy-MM-dd')
+    if (selectedDateKey !== rescheduleDateKey) return
+
+    const matchingSlot = slots.find((slot) => slot.start === rescheduleBooking.startTime)
+    if (matchingSlot) {
+      setSelectedSlot(matchingSlot)
+    }
+  }, [date, rescheduleBooking, selectedSlot, slots])
 
   async function handleBook() {
     if (!selectedService || !selectedTrainer || !selectedSlot) return
@@ -110,8 +151,8 @@ export default function BookingFlow({
     setLoading(true)
 
     try {
-      const res = await fetch('/api/bookings', {
-        method: 'POST',
+      const res = await fetch(isRescheduleMode ? `/api/bookings/${rescheduleBooking!.id}` : '/api/bookings', {
+        method: isRescheduleMode ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           service_id: selectedService.service.id,
@@ -128,7 +169,11 @@ export default function BookingFlow({
         throw new Error(data.error || 'Failed to book session')
       }
 
-      toast.success("Booking request submitted! You'll be notified once it's approved.")
+      toast.success(
+        isRescheduleMode
+          ? 'Session updated successfully.'
+          : "Booking request submitted! You'll be notified once it's approved."
+      )
       router.push('/sessions')
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : 'Something went wrong')
@@ -144,6 +189,34 @@ export default function BookingFlow({
 
   return (
     <div className="space-y-6">
+      {rescheduleBooking ? (
+        <Card className="border-purple-200 bg-purple-50/60">
+          <CardContent className="pt-6">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.16em] text-purple-700">
+                  Reschedule Session
+                </p>
+                <p className="mt-2 text-base font-semibold text-foreground">
+                  {rescheduleBooking.serviceName} with {rescheduleBooking.trainerName}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Current time: {formatBookingShortWeekdayDate(rescheduleBooking.startTime, selectedTrainerTimezone)} at{' '}
+                  {formatBookingTimeRange(
+                    rescheduleBooking.startTime,
+                    rescheduleBooking.endTime,
+                    selectedTrainerTimezone
+                  )}
+                </p>
+              </div>
+              <Badge variant={rescheduleBooking.status === 'approved' ? 'default' : 'secondary'}>
+                {rescheduleBooking.status === 'approved' ? 'Confirmed session' : 'Pending session'}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       {bookableServices.length > 1 && (
         <div>
           <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
@@ -457,21 +530,16 @@ export default function BookingFlow({
                 </div>
               )}
 
-              {selectedService.accessType === 'pack' && selectedServiceSessionsLeft > 0 && selectedSlot && (
+              {!isRescheduleMode && selectedService.accessType === 'pack' && selectedServiceSessionsLeft > 0 && selectedSlot && (
                 <p className="text-xs text-muted-foreground">
                   After this booking: <strong>{selectedServiceSessionsLeft - 1}</strong> session
                   {selectedServiceSessionsLeft - 1 !== 1 ? 's' : ''} remaining
                 </p>
               )}
 
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={handleBook}
-                disabled={!selectedSlot || loading}
-              >
+              <Button className="w-full" size="lg" onClick={handleBook} disabled={!selectedSlot || loading}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Request Booking
+                {isRescheduleMode ? 'Save New Time' : 'Request Booking'}
               </Button>
             </CardContent>
           </Card>
