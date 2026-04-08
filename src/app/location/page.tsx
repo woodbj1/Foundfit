@@ -53,7 +53,7 @@ export default function LocationPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link href="/" className="flex items-center gap-2">
-              <BrandLogo iconClassName="h-9 w-9" nameClassName="text-2xl" priority />
+              <BrandLogo imageClassName="h-10 w-auto max-w-[260px]" priority />
             </Link>
             <div className="flex gap-3">
               <Link href="/login">

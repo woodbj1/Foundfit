@@ -292,7 +292,7 @@ function TrainerSetupPageContent() {
         <Card className="w-full max-w-md shadow-xl border-0">
           <CardHeader className="text-center">
             <Link href="/" className="flex items-center justify-center gap-2 mb-4">
-              <BrandLogo iconClassName="h-9 w-9" nameClassName="text-2xl" priority />
+              <BrandLogo imageClassName="h-14 w-auto max-w-[320px]" priority />
             </Link>
             <CardTitle className="text-2xl">Finish Trainer Setup</CardTitle>
             <CardDescription>

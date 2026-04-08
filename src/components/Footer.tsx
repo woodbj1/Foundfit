@@ -11,7 +11,7 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div className="space-y-4">
             <Link href="/" className="flex items-center gap-2 text-white">
-              <BrandLogo iconClassName="h-9 w-9" />
+              <BrandLogo imageClassName="h-12 w-auto max-w-[280px]" />
             </Link>
             <p className="text-sm text-gray-400">
               Personalized training, virtual coaching, and nutrition support built around your real life.
