@@ -109,7 +109,7 @@ export default function Sidebar({ role, userName }: { role: UserRole; userName: 
     <div className="flex flex-col h-full">
       <div className="p-6">
         <Link href="/" className="flex items-center gap-2">
-          <BrandLogo imageClassName="h-10 w-auto max-w-[210px]" />
+          <BrandLogo imageClassName="h-12 w-auto max-w-[250px]" />
         </Link>
       </div>
 
@@ -142,7 +142,7 @@ export default function Sidebar({ role, userName }: { role: UserRole; userName: 
       {/* Mobile hamburger */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b px-4 py-3 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <BrandLogo imageClassName="h-9 w-auto max-w-[190px]" />
+          <BrandLogo imageClassName="h-10 w-auto max-w-[220px]" />
         </Link>
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground">
