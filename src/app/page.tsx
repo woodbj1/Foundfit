@@ -12,6 +12,7 @@ import {
   User,
 } from 'lucide-react'
 import BrandLogo from '@/components/brand/brand-logo'
+import HeroCarousel, { type HeroCarouselSlide } from '@/components/marketing/hero-carousel'
 import { Button } from '@/components/ui/button'
 import Footer from '@/components/Footer'
 import { getPublicServiceCatalog, type PublicService } from '@/lib/public-catalog'
@@ -37,6 +38,27 @@ const features = [
     icon: Trophy,
     title: 'Expert Training',
     description: 'Get personalized training from certified professionals',
+  },
+]
+
+const heroSlides: HeroCarouselSlide[] = [
+  {
+    src: 'https://horizons-cdn.hostinger.com/5f5f3cbe-95f7-40cd-8ff1-013ae8dea373/woodbury_035-pAt2U.jpg',
+    alt: 'Personal trainer working with client in modern gym',
+    eyebrow: 'Personal Coaching',
+    caption: 'Focused one-on-one sessions built around your goals, schedule, and confidence.',
+  },
+  {
+    src: 'https://horizons-cdn.hostinger.com/5f5f3cbe-95f7-40cd-8ff1-013ae8dea373/ceac7d79e2c2f23386ba9b92ab3824c7.jpg',
+    alt: 'Fully equipped private training studio with squat rack and mirrors',
+    eyebrow: 'Private Studio',
+    caption: 'Train in a distraction-free space with professional equipment and room to move.',
+  },
+  {
+    src: 'https://horizons-cdn.hostinger.com/5f5f3cbe-95f7-40cd-8ff1-013ae8dea373/28dc45b081d27f65ff7896ff9787ffbc.jpg',
+    alt: 'Open workout floor with dumbbells and strength equipment',
+    eyebrow: 'Strength First',
+    caption: 'Build sustainable strength with progressive programming, not generic workouts.',
   },
 ]
 
@@ -196,14 +218,7 @@ export default async function HomePage() {
           </div>
 
           <div className="max-w-5xl mx-auto mt-16">
-            <Image
-              className="rounded-2xl shadow-2xl w-full"
-              alt="Personal trainer working with client in modern gym"
-              src="https://horizons-cdn.hostinger.com/5f5f3cbe-95f7-40cd-8ff1-013ae8dea373/woodbury_035-pAt2U.jpg"
-              width={1600}
-              height={900}
-              priority
-            />
+            <HeroCarousel slides={heroSlides} />
           </div>
         </section>
 
