@@ -3,6 +3,7 @@ import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { getTrainerCalendarBusySlots } from '@/lib/google-calendar'
 import { addDays, addMinutes, areIntervalsOverlapping, format } from 'date-fns'
 import { sortScheduleRules } from '@/lib/trainer-schedule'
+import { getBookingBlockMinutes, getBufferedBookingEnd } from '@/lib/booking-time'
 import type { TrainerScheduleRule } from '@/lib/types'
 import {
   getCurrentDateInTimeZone,
@@ -64,6 +65,8 @@ export async function GET(request: NextRequest) {
       duration = service.duration_minutes
     }
   }
+
+  const slotStepMinutes = getBookingBlockMinutes(duration)
 
   // Find a trainer. If one isn't specified, use the first active trainer.
   let targetTrainerId = trainerId
@@ -189,7 +192,7 @@ export async function GET(request: NextRequest) {
     if (slotStart < now && dateStr === getCurrentDateInTimeZone(trainerTimezone)) {
       // Move slot start to next available time after now
       while (slotStart < now) {
-        slotStart = addMinutes(slotStart, duration)
+        slotStart = addMinutes(slotStart, slotStepMinutes)
       }
     }
 
@@ -201,7 +204,7 @@ export async function GET(request: NextRequest) {
       const conflictsWithBooking = existingBookings?.some((booking) =>
         areIntervalsOverlapping(slotInterval, {
           start: new Date(booking.start_time),
-          end: new Date(booking.end_time),
+          end: getBufferedBookingEnd(booking.start_time, booking.end_time),
         })
       )
 
@@ -227,7 +230,7 @@ export async function GET(request: NextRequest) {
         })
       }
 
-      slotStart = addMinutes(slotStart, duration)
+      slotStart = addMinutes(slotStart, slotStepMinutes)
     }
   }
 

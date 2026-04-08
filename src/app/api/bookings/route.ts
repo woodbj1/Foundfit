@@ -3,11 +3,21 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { sendEmail, bookingRequestEmail, bookingApprovedEmail } from '@/lib/email'
 import { createTrainerCalendarEvent } from '@/lib/google-calendar'
-import { areIntervalsOverlapping, endOfWeek, format, startOfWeek } from 'date-fns'
+import { areIntervalsOverlapping, endOfWeek, startOfWeek } from 'date-fns'
 import { createDailyRoomForBooking, isDailyConfigured } from '@/lib/daily'
+import {
+  formatBookingLongDate,
+  formatBookingTime,
+  getBookingBlockMinutes,
+  getBufferedBookingEnd,
+} from '@/lib/booking-time'
 import { isVirtualService } from '@/lib/product-access'
 import type { Booking, Service, SessionPack, Subscription } from '@/lib/types'
-import { getCurrentDateInTimeZone } from '@/lib/timezone'
+import {
+  getCurrentDateInTimeZone,
+  getDateStringInTimeZone,
+  getUtcRangeForDateInTimeZone,
+} from '@/lib/timezone'
 
 type SubscriptionWithService = Subscription & { service?: Service | null }
 
@@ -126,16 +136,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Bookings must be scheduled in the future.' }, { status: 400 })
   }
 
-  const startDateString = startDate.toISOString().slice(0, 10)
   const currentBookingDate = getCurrentDateInTimeZone('America/New_York')
-  const lastBookableDate = addDaysUtc(currentBookingDate, bookingWindowDays - 1)
-
-  if (startDateString < currentBookingDate || startDateString > lastBookableDate) {
-    return NextResponse.json(
-      { error: `Bookings can only be made through ${lastBookableDate}.` },
-      { status: 400 }
-    )
-  }
 
   const { data: trainerProfile } = await admin
     .from('profiles')
@@ -145,21 +146,41 @@ export async function POST(request: NextRequest) {
 
   const shouldAutoApprove = trainerProfile?.booking_preference === 'instant_confirmation'
   const trainerTimezone = trainerProfile?.timezone || 'America/New_York'
+  const startDateString = getDateStringInTimeZone(startDate, trainerTimezone)
+  const lastBookableDate = addDaysUtc(currentBookingDate, bookingWindowDays - 1)
+
+  if (startDateString < currentBookingDate || startDateString > lastBookableDate) {
+    return NextResponse.json(
+      { error: `Bookings can only be made through ${lastBookableDate}.` },
+      { status: 400 }
+    )
+  }
 
   const endDate = new Date(startDate.getTime() + duration * 60000)
+  const bookingBlockEnd = new Date(
+    startDate.getTime() + getBookingBlockMinutes(duration) * 60000
+  )
+
+  const { start: dayStart, end: dayEnd } = getUtcRangeForDateInTimeZone(
+    startDateString,
+    trainerTimezone
+  )
 
   const { data: conflictingBookings } = await admin
     .from('bookings')
     .select('id, start_time, end_time')
     .eq('trainer_id', targetTrainerId)
     .in('status', ['pending', 'approved'])
-    .lt('start_time', endDate.toISOString())
-    .gt('end_time', startDate.toISOString())
+    .gte('start_time', dayStart.toISOString())
+    .lt('start_time', dayEnd.toISOString())
 
   const hasConflict = (conflictingBookings ?? []).some((booking) =>
     areIntervalsOverlapping(
-      { start: startDate, end: endDate },
-      { start: new Date(booking.start_time), end: new Date(booking.end_time) }
+      { start: startDate, end: bookingBlockEnd },
+      {
+        start: new Date(booking.start_time),
+        end: getBufferedBookingEnd(booking.start_time, booking.end_time),
+      }
     )
   )
 
@@ -285,10 +306,12 @@ export async function POST(request: NextRequest) {
         }
 
         if (clientProfile?.email) {
+          const dateLabel = formatBookingLongDate(startDate, trainerTimezone)
+          const timeLabel = formatBookingTime(startDate, trainerTimezone)
           const emailData = bookingApprovedEmail(
             clientProfile.full_name || 'there',
-            format(startDate, 'EEEE, MMMM d, yyyy'),
-            format(startDate, 'h:mm a'),
+            dateLabel,
+            timeLabel,
             dailyRoomUrl || undefined
           )
           await sendEmail({ to: clientProfile.email, ...emailData })
@@ -297,10 +320,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (booking.status === 'pending' && trainer?.profile?.email) {
+      const dateLabel = formatBookingLongDate(startDate, trainerTimezone)
+      const timeLabel = formatBookingTime(startDate, trainerTimezone)
       const emailData = bookingRequestEmail(
         clientProfile?.full_name || 'A client',
-        format(startDate, 'EEEE, MMMM d, yyyy'),
-        format(startDate, 'h:mm a')
+        dateLabel,
+        timeLabel
       )
       await sendEmail({
         to: trainer.profile.email,
@@ -358,8 +383,11 @@ async function checkClientAccess(
     .eq('service_id', serviceId)
     .order('purchased_at', { ascending: true })
 
+  const now = new Date()
   const activePack = (packs as SessionPack[] | null)?.find(
-    (pack) => pack.used_sessions < pack.total_sessions
+    (pack) =>
+      pack.used_sessions < pack.total_sessions &&
+      (!pack.expires_at || new Date(pack.expires_at) > now)
   )
 
   if (activePack) {

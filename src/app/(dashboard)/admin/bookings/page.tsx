@@ -12,8 +12,8 @@ import { Check, X, Loader2, MapPin, Building2, Video } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import JoinDailyButton from '@/components/bookings/join-daily-button'
 import { getBookingLocationLabel, isVirtualLocation } from '@/lib/booking-display'
+import { formatBookingShortDate, formatBookingTimeRange } from '@/lib/booking-time'
 import { toast } from 'sonner'
-import { format } from 'date-fns'
 import type { Booking, BookingStatus, Profile, Service, Trainer } from '@/lib/types'
 
 type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>['variant']>
@@ -74,67 +74,69 @@ function BookingTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {items.map((booking) => (
-              <TableRow key={booking.id}>
-                <TableCell className="font-medium">{booking.client?.full_name || '-'}</TableCell>
-                <TableCell>{booking.trainer?.profile?.full_name || '-'}</TableCell>
-                <TableCell>{booking.service?.name || '-'}</TableCell>
-                <TableCell>{format(new Date(booking.start_time), 'MMM d, yyyy')}</TableCell>
-                <TableCell>
-                  {format(new Date(booking.start_time), 'h:mm a')} - {format(new Date(booking.end_time), 'h:mm a')}
-                </TableCell>
-                <TableCell>
-                  {isVirtualLocation(booking.location_type) ? (
-                    <span className="flex items-center gap-1 text-sm">
-                      <Video className="h-3.5 w-3.5" />
-                      Virtual
-                    </span>
-                  ) : booking.location_type === 'travel' ? (
-                    <span className="flex items-center gap-1 text-sm">
-                      <MapPin className="h-3.5 w-3.5" />
-                      {getBookingLocationLabel(booking.location_type, booking.travel_address)}
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-sm">
-                      <Building2 className="h-3.5 w-3.5" />
-                      Studio
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell>{statusBadge(booking.status)}</TableCell>
-                <TableCell>
-                  {booking.status === 'approved' && isVirtualLocation(booking.location_type) ? (
-                    <JoinDailyButton bookingId={booking.id} label="Join" />
-                  ) : (
-                    <span className="text-xs text-muted-foreground">-</span>
-                  )}
-                </TableCell>
-                {showActions && (
+            {items.map((booking) => {
+              const trainerTimezone = booking.trainer?.profile?.timezone || 'America/New_York'
+
+              return (
+                <TableRow key={booking.id}>
+                  <TableCell className="font-medium">{booking.client?.full_name || '-'}</TableCell>
+                  <TableCell>{booking.trainer?.profile?.full_name || '-'}</TableCell>
+                  <TableCell>{booking.service?.name || '-'}</TableCell>
+                  <TableCell>{formatBookingShortDate(booking.start_time, trainerTimezone)}</TableCell>
+                  <TableCell>{formatBookingTimeRange(booking.start_time, booking.end_time, trainerTimezone)}</TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => onAction(booking.id, 'approve')}
-                        disabled={actionLoading === booking.id}
-                        className="h-8 w-8 p-0 text-green-600"
-                      >
-                        <Check className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => onAction(booking.id, 'decline')}
-                        disabled={actionLoading === booking.id}
-                        className="h-8 w-8 p-0 text-destructive"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    {isVirtualLocation(booking.location_type) ? (
+                      <span className="flex items-center gap-1 text-sm">
+                        <Video className="h-3.5 w-3.5" />
+                        Virtual
+                      </span>
+                    ) : booking.location_type === 'travel' ? (
+                      <span className="flex items-center gap-1 text-sm">
+                        <MapPin className="h-3.5 w-3.5" />
+                        {getBookingLocationLabel(booking.location_type, booking.travel_address)}
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-sm">
+                        <Building2 className="h-3.5 w-3.5" />
+                        Studio
+                      </span>
+                    )}
                   </TableCell>
-                )}
-              </TableRow>
-            ))}
+                  <TableCell>{statusBadge(booking.status)}</TableCell>
+                  <TableCell>
+                    {booking.status === 'approved' && isVirtualLocation(booking.location_type) ? (
+                      <JoinDailyButton bookingId={booking.id} label="Join" />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  {showActions && (
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => onAction(booking.id, 'approve')}
+                          disabled={actionLoading === booking.id}
+                          className="h-8 w-8 p-0 text-green-600"
+                        >
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => onAction(booking.id, 'decline')}
+                          disabled={actionLoading === booking.id}
+                          className="h-8 w-8 p-0 text-destructive"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  )}
+                </TableRow>
+              )
+            })}
           </TableBody>
         </Table>
       </div>

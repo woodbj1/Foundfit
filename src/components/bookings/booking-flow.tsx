@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { formatBookingShortWeekdayDate, formatBookingTime, formatBookingTimeRange } from '@/lib/booking-time'
 import type { LocationType, Profile, TimeSlot } from '@/lib/types'
 import { isVirtualService, type BookableServiceOption } from '@/lib/product-access'
 
@@ -29,7 +30,7 @@ interface BookingTrainer {
   user_id: string
   bio: string | null
   is_active: boolean
-  profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url'>
+  profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'timezone'>
 }
 
 interface Props {
@@ -139,6 +140,7 @@ export default function BookingFlow({
   const virtualBooking = selectedService ? isVirtualService(selectedService.service) : false
   const selectedServiceSessionsLeft = selectedService?.remainingSessions ?? 0
   const showTrainerStep = trainers.length > 0
+  const selectedTrainerTimezone = selectedTrainer?.profile?.timezone || 'America/New_York'
 
   return (
     <div className="space-y-6">
@@ -351,7 +353,7 @@ export default function BookingFlow({
                         onClick={() => setSelectedSlot(slot)}
                         className="text-sm"
                       >
-                        {format(new Date(slot.start), 'h:mm a')}
+                        {formatBookingTime(slot.start, selectedTrainerTimezone)}
                       </Button>
                     )
                   })}
@@ -436,11 +438,8 @@ export default function BookingFlow({
                   <h4 className="font-medium text-sm">Booking Summary</h4>
                   <div className="text-sm space-y-1 text-muted-foreground">
                     <p>Service: {selectedService.service.name}</p>
-                    <p>Date: {format(new Date(selectedSlot.start), 'EEE, MMM d, yyyy')}</p>
-                    <p>
-                      Time: {format(new Date(selectedSlot.start), 'h:mm a')} -{' '}
-                      {format(new Date(selectedSlot.end), 'h:mm a')}
-                    </p>
+                    <p>Date: {formatBookingShortWeekdayDate(selectedSlot.start, selectedTrainerTimezone)}</p>
+                    <p>Time: {formatBookingTimeRange(selectedSlot.start, selectedSlot.end, selectedTrainerTimezone)}</p>
                     <p>Trainer: {selectedTrainer.profile?.full_name ?? 'Trainer'}</p>
                     <p>
                       Location: {virtualBooking

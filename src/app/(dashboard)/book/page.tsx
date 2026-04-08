@@ -16,7 +16,7 @@ interface BookingTrainer {
   bio: string | null
   is_active: boolean
   onboarding_completed_at: string | null
-  profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url'>
+  profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'timezone'>
 }
 
 export default async function BookPage() {
@@ -55,7 +55,7 @@ export default async function BookPage() {
   // Get active trainers
   const { data: trainers } = await admin
     .from('trainers')
-    .select('id, user_id, bio, is_active, onboarding_completed_at, profile:profiles!trainers_user_id_fkey(id, full_name, avatar_url)')
+    .select('id, user_id, bio, is_active, onboarding_completed_at, profile:profiles!trainers_user_id_fkey(id, full_name, avatar_url, timezone)')
     .eq('is_active', true)
     .not('onboarding_completed_at', 'is', null)
   const hasAvailableTrainers = (trainers?.length ?? 0) > 0

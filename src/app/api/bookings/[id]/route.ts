@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createTrainerCalendarEvent, deleteTrainerCalendarEvent } from '@/lib/google-calendar'
 import { sendEmail, bookingApprovedEmail, bookingDeclinedEmail, bookingCancelledEmail } from '@/lib/email'
-import { format } from 'date-fns'
+import { areIntervalsOverlapping } from 'date-fns'
+import {
+  formatBookingLongDate,
+  formatBookingTime,
+  getBufferedBookingEnd,
+} from '@/lib/booking-time'
 import { createDailyRoomForBooking, isDailyConfigured } from '@/lib/daily'
-import { isVirtualService } from '@/lib/product-access'
+import { isPackExpired, isVirtualService } from '@/lib/product-access'
+import { getDateStringInTimeZone, getUtcRangeForDateInTimeZone } from '@/lib/timezone'
 
-// PATCH — approve or decline a booking (trainer/admin)
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -35,7 +40,6 @@ export async function PATCH(
     .eq('user_id', user.id)
     .single()
 
-  // Get booking
   const { data: booking } = await supabase
     .from('bookings')
     .select('*, client:profiles!bookings_client_id_fkey(*), service:services(*), trainer:trainers(user_id, profile:profiles!trainers_user_id_fkey(timezone))')
@@ -57,7 +61,6 @@ export async function PATCH(
     return NextResponse.json({ error: 'Booking can no longer be updated' }, { status: 400 })
   }
 
-  // Update booking status
   const updateData: {
     status: 'approved' | 'declined'
     daily_room_name?: string
@@ -66,8 +69,51 @@ export async function PATCH(
   } = { status }
   const isVirtualBooking = isVirtualService(booking.service)
 
-  // If approving, add to Google Calendar
   if (status === 'approved') {
+    const startDate = new Date(booking.start_time)
+    const endDate = new Date(booking.end_time)
+    const trainerTimezone = booking.trainer?.profile?.timezone || 'America/New_York'
+    const bookingBlockEnd = getBufferedBookingEnd(startDate, endDate)
+    const bookingDateString = getDateStringInTimeZone(booking.start_time, trainerTimezone)
+
+    if (startDate <= new Date()) {
+      return NextResponse.json(
+        { error: 'Past bookings can no longer be approved.' },
+        { status: 400 }
+      )
+    }
+
+    const { start: dayStart, end: dayEnd } = getUtcRangeForDateInTimeZone(
+      bookingDateString,
+      trainerTimezone
+    )
+
+    const { data: conflictingBookings } = await supabase
+      .from('bookings')
+      .select('id, start_time, end_time')
+      .eq('trainer_id', booking.trainer_id)
+      .in('status', ['pending', 'approved'])
+      .neq('id', booking.id)
+      .gte('start_time', dayStart.toISOString())
+      .lt('start_time', dayEnd.toISOString())
+
+    const hasConflict = (conflictingBookings ?? []).some((otherBooking) =>
+      areIntervalsOverlapping(
+        { start: startDate, end: bookingBlockEnd },
+        {
+          start: new Date(otherBooking.start_time),
+          end: getBufferedBookingEnd(otherBooking.start_time, otherBooking.end_time),
+        }
+      )
+    )
+
+    if (hasConflict) {
+      return NextResponse.json(
+        { error: 'This time now overlaps another booking. Ask the client to pick a new slot.' },
+        { status: 409 }
+      )
+    }
+
     if (isVirtualBooking && !booking.daily_room_url) {
       if (!isDailyConfigured()) {
         return NextResponse.json(
@@ -117,7 +163,6 @@ export async function PATCH(
       }
     }
 
-    // Decrement session pack if applicable
     if (booking.status !== 'approved') {
       const { data: subscription } = await supabase
         .from('subscriptions')
@@ -136,7 +181,9 @@ export async function PATCH(
           .eq('service_id', booking.service_id)
           .order('purchased_at', { ascending: true })
 
-        const activePack = packs?.find((p) => p.used_sessions < p.total_sessions)
+        const activePack = packs?.find(
+          (p) => !isPackExpired(p) && p.used_sessions < p.total_sessions
+        )
         if (activePack) {
           await supabase
             .from('session_packs')
@@ -156,12 +203,12 @@ export async function PATCH(
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Send email notification to client
   try {
     if (booking.client?.email) {
       const startDate = new Date(booking.start_time)
-      const dateStr = format(startDate, 'EEEE, MMMM d, yyyy')
-      const timeStr = format(startDate, 'h:mm a')
+      const trainerTimezone = booking.trainer?.profile?.timezone || 'America/New_York'
+      const dateStr = formatBookingLongDate(startDate, trainerTimezone)
+      const timeStr = formatBookingTime(startDate, trainerTimezone)
 
       const emailData = status === 'approved'
         ? bookingApprovedEmail(
@@ -181,7 +228,6 @@ export async function PATCH(
   return NextResponse.json({ success: true })
 }
 
-// DELETE — cancel a booking (client)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -191,7 +237,6 @@ export async function DELETE(
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Get booking
   const { data: booking } = await supabase
     .from('bookings')
     .select('*, client:profiles!bookings_client_id_fkey(*), trainer:trainers(*, profile:profiles!trainers_user_id_fkey(*)), service:services(*)')
@@ -203,14 +248,19 @@ export async function DELETE(
   }
 
   if (booking.client_id !== user.id) {
-    // Check if user is trainer/admin
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-    if (!profile || !['trainer', 'admin'].includes(profile.role)) {
+    const [{ data: profile }, { data: actorTrainer }] = await Promise.all([
+      supabase.from('profiles').select('role').eq('id', user.id).single(),
+      supabase.from('trainers').select('id').eq('user_id', user.id).maybeSingle(),
+    ])
+
+    const isAdmin = profile?.role === 'admin'
+    const isOwningTrainer = actorTrainer?.id === booking.trainer_id
+
+    if (!isAdmin && !isOwningTrainer) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
   }
 
-  // Update status to cancelled
   const { error } = await supabase
     .from('bookings')
     .update({ status: 'cancelled' })
@@ -220,7 +270,6 @@ export async function DELETE(
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Remove from Google Calendar
   if (booking.google_calendar_event_id) {
     try {
       await deleteTrainerCalendarEvent(booking.trainer_id, booking.google_calendar_event_id)
@@ -229,7 +278,6 @@ export async function DELETE(
     }
   }
 
-  // Return session credit if pack user and booking was approved
   if (booking.status === 'approved') {
     const { data: subscription } = await supabase
       .from('subscriptions')
@@ -247,7 +295,7 @@ export async function DELETE(
         .eq('client_id', booking.client_id)
         .eq('service_id', booking.service_id)
         .gt('used_sessions', 0)
-        .order('purchased_at', { ascending: false })
+        .order('purchased_at', { ascending: true })
         .limit(1)
 
       if (packs && packs.length > 0) {
@@ -259,16 +307,16 @@ export async function DELETE(
     }
   }
 
-  // Notify trainer
   try {
     const trainerEmail = booking.trainer?.profile?.email
     if (trainerEmail) {
       const startDate = new Date(booking.start_time)
+      const trainerTimezone = booking.trainer?.profile?.timezone || 'America/New_York'
       const emailData = bookingCancelledEmail(
         booking.trainer?.profile?.full_name || 'Trainer',
         booking.client?.full_name || 'A client',
-        format(startDate, 'EEEE, MMMM d, yyyy'),
-        format(startDate, 'h:mm a')
+        formatBookingLongDate(startDate, trainerTimezone),
+        formatBookingTime(startDate, trainerTimezone)
       )
       await sendEmail({ to: trainerEmail, ...emailData })
     }
@@ -302,3 +350,4 @@ function buildBookingCalendarDescription({
 
   return parts.join('\n')
 }
+

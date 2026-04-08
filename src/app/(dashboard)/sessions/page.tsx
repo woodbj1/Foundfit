@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { format } from 'date-fns'
 import { Building2, Clock, MapPin, Video } from 'lucide-react'
 import type { VariantProps } from 'class-variance-authority'
 
@@ -9,6 +8,7 @@ import JoinDailyButton from '@/components/bookings/join-daily-button'
 import { Badge, badgeVariants } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { getBookingLocationLabel, isVirtualLocation } from '@/lib/booking-display'
+import { formatBookingLongDate, formatBookingTimeRange } from '@/lib/booking-time'
 import { createClient } from '@/lib/supabase/server'
 import type { Booking, BookingStatus, Profile, Service, Trainer } from '@/lib/types'
 
@@ -35,17 +35,19 @@ function statusColor(status: BookingStatus): BadgeVariant {
 }
 
 function BookingCard({ booking }: { booking: SessionBooking }) {
+  const trainerTimezone = booking.trainer?.profile?.timezone || 'America/New_York'
+
   return (
     <div className="rounded-lg border bg-card p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-1">
           <p className="font-medium">
-            {format(new Date(booking.start_time), 'EEEE, MMMM d, yyyy')}
+            {formatBookingLongDate(booking.start_time, trainerTimezone)}
           </p>
           <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <Clock className="h-3.5 w-3.5" />
-              {format(new Date(booking.start_time), 'h:mm a')} - {format(new Date(booking.end_time), 'h:mm a')}
+              {formatBookingTimeRange(booking.start_time, booking.end_time, trainerTimezone)}
             </span>
             <span className="flex items-center gap-1">
               {isVirtualLocation(booking.location_type) ? (

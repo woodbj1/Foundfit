@@ -31,8 +31,23 @@ import {
   getLibraryAccessDetails,
   getPrimarySessionSubscription,
 } from '@/lib/product-access'
+import {
+  formatBookingTimeRange,
+  formatBookingWeekdayDate,
+  formatBookingTime,
+} from '@/lib/booking-time'
 import { formatPrice } from '@/lib/stripe'
 import { createClient } from '@/lib/supabase/server'
+
+type CancelledBookingPreview = {
+  start_time: string
+  end_time: string
+  trainer?: {
+    profile?: {
+      timezone?: string | null
+    } | null
+  } | null
+}
 
 export default async function ClientDashboard() {
   const supabase = await createClient()
@@ -100,11 +115,26 @@ export default async function ClientDashboard() {
 
   const { data: cancelledBookings } = await supabase
     .from('bookings')
-    .select('start_time, end_time')
+    .select('start_time, end_time, trainer:trainers(profile:profiles(timezone))')
     .eq('client_id', user.id)
     .eq('status', 'cancelled')
     .order('start_time', { ascending: false })
     .limit(3)
+
+  const normalizedCancelledBookings = ((cancelledBookings ?? []).map((booking) => {
+    const trainer = Array.isArray(booking.trainer) ? booking.trainer[0] : booking.trainer
+    const trainerProfile = trainer && Array.isArray(trainer.profile) ? trainer.profile[0] : trainer?.profile
+
+    return {
+      ...booking,
+      trainer: trainer
+        ? {
+            ...trainer,
+            profile: trainerProfile,
+          }
+        : null,
+    }
+  })) as CancelledBookingPreview[]
 
   const { data: mealPlans } = await supabase
     .from('meal_plans')
@@ -232,18 +262,20 @@ export default async function ClientDashboard() {
             <CardContent>
               {upcomingBookings && upcomingBookings.length > 0 ? (
                 <div className="space-y-3">
-                  {upcomingBookings.map((booking) => (
+                  {upcomingBookings.map((booking) => {
+                    const trainerTimezone = booking.trainer?.profile?.timezone || 'America/New_York'
+
+                    return (
                     <div
                       key={booking.id}
                       className="flex flex-col gap-3 rounded-lg bg-muted/50 p-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div>
                         <p className="font-medium text-sm">
-                          {format(new Date(booking.start_time), 'EEEE, MMM d')}
+                          {formatBookingWeekdayDate(booking.start_time, trainerTimezone)}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {format(new Date(booking.start_time), 'h:mm a')} -{' '}
-                          {format(new Date(booking.end_time), 'h:mm a')}
+                          {formatBookingTimeRange(booking.start_time, booking.end_time, trainerTimezone)}
                           {booking.trainer?.profile?.full_name ? (
                             <> &middot; {booking.trainer.profile.full_name}</>
                           ) : null}
@@ -262,7 +294,8 @@ export default async function ClientDashboard() {
                         ) : null}
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                   <div className="pt-1">
                     <Link href="/sessions">
                       <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground">
@@ -285,7 +318,7 @@ export default async function ClientDashboard() {
             </CardContent>
           </Card>
 
-          {cancelledBookings && cancelledBookings.length > 0 ? (
+          {normalizedCancelledBookings.length > 0 ? (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2 text-muted-foreground">
@@ -295,10 +328,16 @@ export default async function ClientDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {cancelledBookings.map((booking, index) => (
+                  {normalizedCancelledBookings.map((booking, index) => (
                     <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
                       <p className="text-sm text-muted-foreground">
-                        {format(new Date(booking.start_time), 'EEEE, MMM d - h:mm a')}
+                        {formatBookingWeekdayDate(
+                          booking.start_time,
+                          booking.trainer?.profile?.timezone || 'America/New_York'
+                        )} - {formatBookingTime(
+                          booking.start_time,
+                          booking.trainer?.profile?.timezone || 'America/New_York'
+                        )}
                       </p>
                       <Badge variant="destructive" className="text-xs">Cancelled</Badge>
                     </div>

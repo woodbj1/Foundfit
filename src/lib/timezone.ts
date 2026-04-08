@@ -55,6 +55,10 @@ export function getCurrentDateInTimeZone(timeZone: string) {
   return getDateFormatter(timeZone).format(new Date())
 }
 
+export function getDateStringInTimeZone(value: Date | string, timeZone: string) {
+  return getDateFormatter(timeZone).format(typeof value === 'string' ? new Date(value) : value)
+}
+
 export function getNextDateString(date: string) {
   const next = new Date(`${date}T00:00:00Z`)
   next.setUTCDate(next.getUTCDate() + 1)
