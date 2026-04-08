@@ -147,6 +147,20 @@ export interface MealPlan {
   trainer?: Trainer
 }
 
+export interface MealPlanPurchase {
+  id: string
+  client_id: string
+  service_id: string
+  stripe_payment_id: string | null
+  meal_plan_id: string | null
+  purchased_at: string
+  fulfilled_at: string | null
+  created_at: string
+  updated_at: string
+  service?: Service
+  meal_plan?: MealPlan | null
+}
+
 export interface AppSettings {
   travel_fee: number // in cents
   default_duration: number // minutes

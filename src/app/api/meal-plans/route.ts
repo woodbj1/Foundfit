@@ -5,6 +5,7 @@ import { sendEmail, mealPlanEmail } from '@/lib/email'
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
+  const admin = await createAdminClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -41,7 +42,6 @@ export async function POST(request: NextRequest) {
     if (clientProfile?.email) {
       const emailData = mealPlanEmail(clientProfile.full_name || 'there', mealPlan.title)
       const storagePath = normalizeMealPlanStoragePath(mealPlan.file_url)
-      const admin = await createAdminClient()
 
       try {
         const { data: fileData, error: downloadError } = await admin.storage
@@ -62,6 +62,26 @@ export async function POST(request: NextRequest) {
       } catch {
         await sendEmail({ to: clientProfile.email, ...emailData })
       }
+    }
+
+    const { data: pendingPurchase } = await admin
+      .from('meal_plan_purchases')
+      .select('id')
+      .eq('client_id', mealPlan.client_id)
+      .is('fulfilled_at', null)
+      .order('purchased_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (pendingPurchase?.id) {
+      await admin
+        .from('meal_plan_purchases')
+        .update({
+          fulfilled_at: new Date().toISOString(),
+          meal_plan_id: mealPlan.id,
+        })
+        .eq('id', pendingPurchase.id)
+        .throwOnError()
     }
   } catch (error) {
     console.error('Failed to send meal plan email:', error)

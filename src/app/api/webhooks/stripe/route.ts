@@ -146,6 +146,35 @@ export async function POST(request: NextRequest) {
               .insert(sessionPackPayload)
               .throwOnError()
           }
+        } else if (serviceType === 'meal_plan') {
+          const paymentIntentId = session.payment_intent as string | null
+
+          const { data: existingPurchase } = paymentIntentId
+            ? await supabase
+                .from('meal_plan_purchases')
+                .select('id')
+                .eq('stripe_payment_id', paymentIntentId)
+                .maybeSingle()
+            : { data: null }
+
+          const purchasePayload = {
+            client_id: userId,
+            service_id: serviceId,
+            stripe_payment_id: paymentIntentId,
+          }
+
+          if (existingPurchase?.id) {
+            await supabase
+              .from('meal_plan_purchases')
+              .update(purchasePayload)
+              .eq('id', existingPurchase.id)
+              .throwOnError()
+          } else {
+            await supabase
+              .from('meal_plan_purchases')
+              .insert(purchasePayload)
+              .throwOnError()
+          }
         }
 
         const { data: profile } = await supabase
