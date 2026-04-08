@@ -48,6 +48,11 @@ function getGoogleMessage(value: string | null) {
         type: 'error' as const,
         text: 'We could not connect your Google Calendar. Please try again.',
       }
+    case 'scope_missing':
+      return {
+        type: 'error' as const,
+        text: 'Google Calendar access was not granted. Please reconnect and allow calendar permission.',
+      }
     case 'auth_required':
       return {
         type: 'error' as const,
@@ -91,6 +96,8 @@ function TrainerSetupPageContent() {
 
   const googleMessage = getGoogleMessage(searchParams.get('google'))
 
+  const googleParam = searchParams.get('google')
+
   const loadTrainerState = useCallback(async (currentUserId: string) => {
     const { data: profileData, error: profileError } = await supabase
       .from('profiles')
@@ -123,10 +130,10 @@ function TrainerSetupPageContent() {
     const normalizedTrainer = trainerData as TrainerSetupStatus
     setTrainer(normalizedTrainer)
 
-    if (normalizedTrainer.onboarding_completed_at) {
+    if (normalizedTrainer.onboarding_completed_at && !googleParam) {
       router.replace('/trainer')
     }
-  }, [router, supabase])
+  }, [googleParam, router, supabase])
 
   useEffect(() => {
     let active = true
@@ -296,7 +303,7 @@ function TrainerSetupPageContent() {
             </Link>
             <CardTitle className="text-2xl">Finish Trainer Setup</CardTitle>
             <CardDescription>
-              Sign in with the temporary password from your email to create your permanent password and connect your Google Calendar.
+              Sign in with the temporary password from your email or admin to create your permanent password and connect your Google Calendar.
             </CardDescription>
           </CardHeader>
           <CardContent>

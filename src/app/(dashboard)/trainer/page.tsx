@@ -2,7 +2,7 @@
 
 import type { ComponentType } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Building2,
   Calendar,
@@ -89,6 +89,8 @@ type TrainerRecord = {
   onboarding_completed_at: string | null
 }
 
+type CalendarStatus = 'connected' | 'not_connected' | 'reconnect_required'
+
 type UpcomingDay = {
   dateKey: string
   sessions: BookingRow[]
@@ -134,6 +136,7 @@ function SummaryCard({
 
 export default function TrainerDashboardPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [supabase] = useState(() => createClient())
 
   const [user, setUser] = useState<{ id: string } | null>(null)
@@ -142,11 +145,14 @@ export default function TrainerDashboardPage() {
   const [pendingBookings, setPendingBookings] = useState<BookingRow[]>([])
   const [confirmedSessions, setConfirmedSessions] = useState<BookingRow[]>([])
   const [scheduleRules, setScheduleRules] = useState<TrainerScheduleRule[]>([])
+  const [calendarStatus, setCalendarStatus] = useState<CalendarStatus>('not_connected')
+  const [calendarEmail, setCalendarEmail] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [bookingPref, setBookingPref] = useState('request_system')
   const [updatingPref, setUpdatingPref] = useState(false)
   const [isUpdatingTimezone, setIsUpdatingTimezone] = useState(false)
+  const [connectingGoogle, setConnectingGoogle] = useState(false)
 
   const groupedSchedule = useMemo(() => groupScheduleRulesByDay(scheduleRules), [scheduleRules])
   const displayTimezone = profile?.timezone || 'America/New_York'
@@ -194,6 +200,8 @@ export default function TrainerDashboardPage() {
       setTrainer(trainerData as TrainerRecord | null)
 
       if (!trainerData) {
+        setCalendarStatus('not_connected')
+        setCalendarEmail(null)
         setPendingBookings([])
         setConfirmedSessions([])
         setScheduleRules([])
@@ -211,7 +219,26 @@ export default function TrainerDashboardPage() {
         })
         .catch(() => [] as TrainerScheduleRule[])
 
-      const [{ data: pendingData }, { data: confirmedData }, nextScheduleRules] = await Promise.all([
+      const calendarStatusPromise = fetch('/api/trainer/google/status', { cache: 'no-store' })
+        .then(async (response) => {
+          if (!response.ok) {
+            return {
+              status: 'not_connected' as CalendarStatus,
+              email: null as string | null,
+            }
+          }
+
+          return (await response.json()) as {
+            status: CalendarStatus
+            email: string | null
+          }
+        })
+        .catch(() => ({
+          status: 'not_connected' as CalendarStatus,
+          email: null as string | null,
+        }))
+
+      const [{ data: pendingData }, { data: confirmedData }, nextScheduleRules, nextCalendarStatus] = await Promise.all([
         supabase
           .from('bookings')
           .select(
@@ -230,6 +257,7 @@ export default function TrainerDashboardPage() {
           .gte('start_time', new Date().toISOString())
           .order('start_time', { ascending: true }),
         scheduleRulesPromise,
+        calendarStatusPromise,
       ])
 
       const normalizeBookings = (rows: BookingQueryRow[] | null | undefined): BookingRow[] =>
@@ -242,6 +270,8 @@ export default function TrainerDashboardPage() {
       setPendingBookings(normalizeBookings(pendingData as BookingQueryRow[] | null))
       setConfirmedSessions(normalizeBookings(confirmedData as BookingQueryRow[] | null))
       setScheduleRules(nextScheduleRules)
+      setCalendarStatus(nextCalendarStatus.status)
+      setCalendarEmail(nextCalendarStatus.email)
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
       toast.error('Failed to load dashboard data.')
@@ -261,9 +291,42 @@ export default function TrainerDashboardPage() {
     })
   }, [router, supabase, fetchData])
 
+  useEffect(() => {
+    if (searchParams.get('google') !== 'connected') {
+      return
+    }
+
+    toast.success('Google Calendar connected successfully.')
+    router.replace('/trainer')
+  }, [router, searchParams])
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     router.push('/login')
+  }
+
+  const handleConnectGoogle = async () => {
+    setConnectingGoogle(true)
+
+    try {
+      const response = await fetch('/api/trainer/google/connect', {
+        method: 'POST',
+      })
+
+      const data = (await response.json()) as { url?: string; error?: string }
+      if (!response.ok || !data.url) {
+        throw new Error(data.error || 'Could not start Google Calendar setup.')
+      }
+
+      window.location.href = data.url
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Could not start Google Calendar setup.'
+      )
+      setConnectingGoogle(false)
+    }
   }
 
   const handleApproveRequest = async (booking: BookingRow) => {
@@ -401,7 +464,11 @@ export default function TrainerDashboardPage() {
                 {bookingPref === 'instant_confirmation' ? 'Instant confirmation' : 'Request system'}
               </Badge>
               <Badge className="bg-white/20 text-white hover:bg-white/20">
-                {trainer?.google_calendar_connected_at ? 'Calendar connected' : 'Calendar setup needed'}
+                {calendarStatus === 'connected'
+                  ? 'Calendar connected'
+                  : calendarStatus === 'reconnect_required'
+                    ? 'Reconnect required'
+                    : 'Calendar setup needed'}
               </Badge>
             </div>
           </CardContent>
@@ -907,30 +974,37 @@ export default function TrainerDashboardPage() {
                   <div
                     className={cn(
                       'rounded-2xl border px-4 py-4',
-                      trainer?.google_calendar_connected_at
+                      calendarStatus === 'connected'
                         ? 'border-green-200 bg-green-50'
                         : 'border-amber-200 bg-amber-50'
                     )}
                   >
                     <p className="font-semibold text-foreground">
-                      {trainer?.google_calendar_connected_at
+                      {calendarStatus === 'connected'
                         ? 'Calendar connected'
-                        : 'Calendar setup needed'}
+                        : calendarStatus === 'reconnect_required'
+                          ? 'Reconnect Google Calendar'
+                          : 'Calendar setup needed'}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {trainer?.google_calendar_connected_at
-                        ? `Connected as ${trainer.google_calendar_email || 'your primary Google Calendar'}.`
-                        : 'Connect Google Calendar so external events block booking conflicts automatically.'}
+                      {calendarStatus === 'connected'
+                        ? `Connected as ${calendarEmail || 'your primary Google Calendar'}.`
+                        : calendarStatus === 'reconnect_required'
+                          ? 'This saved Google connection no longer has calendar permission. Reconnect it so approved bookings create events on your calendar again.'
+                          : 'Connect Google Calendar so external events block booking conflicts automatically.'}
                     </p>
                   </div>
                   <Button
                     variant="outline"
-                    onClick={() => router.push('/trainer-setup')}
+                    onClick={handleConnectGoogle}
                     className="w-full"
+                    disabled={connectingGoogle}
                   >
-                    {trainer?.google_calendar_connected_at
+                    {connectingGoogle
+                      ? 'Connecting...'
+                      : calendarStatus === 'connected' || calendarStatus === 'reconnect_required'
                       ? 'Reconnect Google Calendar'
-                      : 'Finish Setup'}
+                      : 'Connect Google Calendar'}
                   </Button>
                 </CardContent>
               </Card>
@@ -1001,7 +1075,7 @@ export default function TrainerDashboardPage() {
                 <div
                   className={cn(
                     'rounded-2xl border p-4',
-                    trainer?.google_calendar_connected_at
+                    calendarStatus === 'connected'
                       ? 'border-green-200 bg-green-50'
                       : 'border-amber-200 bg-amber-50'
                   )}
@@ -1010,23 +1084,32 @@ export default function TrainerDashboardPage() {
                     <div>
                       <h4 className="font-semibold text-foreground">Calendar integration status</h4>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        {trainer?.google_calendar_connected_at
-                          ? `Connected as ${trainer.google_calendar_email || 'your primary Google Calendar'}.`
-                          : 'Connect your Google Calendar to block off busy time and sync approved bookings.'}
+                        {calendarStatus === 'connected'
+                          ? `Connected as ${calendarEmail || 'your primary Google Calendar'}.`
+                          : calendarStatus === 'reconnect_required'
+                            ? 'Your Google account needs to be reconnected with Calendar permission before FoundFit can create events for approved sessions.'
+                            : 'Connect your Google Calendar to block off busy time and sync approved bookings.'}
                       </p>
                     </div>
                     <div className="flex items-center gap-3">
-                      <Badge
-                        variant={trainer?.google_calendar_connected_at ? 'default' : 'secondary'}
-                      >
-                        {trainer?.google_calendar_connected_at ? 'Connected' : 'Setup required'}
+                      <Badge variant={calendarStatus === 'connected' ? 'default' : 'secondary'}>
+                        {calendarStatus === 'connected'
+                          ? 'Connected'
+                          : calendarStatus === 'reconnect_required'
+                            ? 'Reconnect required'
+                            : 'Setup required'}
                       </Badge>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => router.push('/trainer-setup')}
+                        onClick={handleConnectGoogle}
+                        disabled={connectingGoogle}
                       >
-                        {trainer?.google_calendar_connected_at ? 'Reconnect' : 'Finish setup'}
+                        {connectingGoogle
+                          ? 'Connecting...'
+                          : calendarStatus === 'connected' || calendarStatus === 'reconnect_required'
+                            ? 'Reconnect'
+                            : 'Connect'}
                       </Button>
                     </div>
                   </div>
