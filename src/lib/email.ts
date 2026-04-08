@@ -314,21 +314,25 @@ export function bookingApprovedEmail(
     html: renderBrandedEmail({
       title: 'Session Confirmed',
       bodyHtml: `
-        <p style="margin: 0; font-size: 16px; line-height: 1.7; color: #332145;">
-          Hey ${escapeHtml(clientName)}, your session has been confirmed and added to your plan.
-        </p>
-        ${renderDetails([
-          { label: 'Date', value: date },
-          { label: 'Time', value: time },
-        ])}
-        <p style="margin: 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
-          ${options.joinUrl
-            ? 'Your Daily join link is ready below. We recommend joining a few minutes early.'
-            : 'You can review your schedule any time from your client dashboard.'}
-        </p>
-        <p style="margin: 12px 0 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
-          Use the Add to Calendar button below, or open the attached calendar file in Apple Calendar, Outlook, or another calendar app.
-        </p>
+        <div style="display: grid; gap: 18px;">
+          <p style="margin: 0; font-size: 16px; line-height: 1.7; color: #332145;">
+            Hey ${escapeHtml(clientName)}, your session has been confirmed and added to your plan.
+          </p>
+          ${renderDetails([
+            { label: 'Date', value: date },
+            { label: 'Time', value: time },
+          ])}
+          <div style="display: grid; gap: 12px;">
+            <p style="margin: 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
+              ${options.joinUrl
+                ? 'Your Daily join link is ready below. We recommend joining a few minutes early.'
+                : 'You can review your schedule any time from your client dashboard.'}
+            </p>
+            <p style="margin: 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
+              Use the Add to Calendar button below, or open the attached calendar file in Apple Calendar, Outlook, or another calendar app.
+            </p>
+          </div>
+        </div>
       `,
       ctaLabel: options.joinUrl ? 'Join Virtual Session' : 'Open Dashboard',
       ctaHref: options.joinUrl || getAppLink('/sessions'),
@@ -465,21 +469,25 @@ export function bookingRescheduledEmail(
     html: renderBrandedEmail({
       title: 'Session Rescheduled',
       bodyHtml: `
-        <p style="margin: 0; font-size: 16px; line-height: 1.7; color: #332145;">
-          Hey ${escapeHtml(clientName)}, your session has been moved to a new time.
-        </p>
-        ${renderDetails([
-          { label: 'New Date', value: date },
-          { label: 'New Time', value: time },
-        ])}
-        <p style="margin: 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
-          ${options.joinUrl
-            ? 'Your existing Daily join link is still ready below.'
-            : 'You can review the updated session details any time from your dashboard.'}
-        </p>
-        <p style="margin: 12px 0 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
-          Use the Add to Calendar button below, or update your calendar from the attached .ics file.
-        </p>
+        <div style="display: grid; gap: 18px;">
+          <p style="margin: 0; font-size: 16px; line-height: 1.7; color: #332145;">
+            Hey ${escapeHtml(clientName)}, your session has been moved to a new time.
+          </p>
+          ${renderDetails([
+            { label: 'New Date', value: date },
+            { label: 'New Time', value: time },
+          ])}
+          <div style="display: grid; gap: 12px;">
+            <p style="margin: 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
+              ${options.joinUrl
+                ? 'Your existing Daily join link is still ready below.'
+                : 'You can review the updated session details any time from your dashboard.'}
+            </p>
+            <p style="margin: 0; font-size: 15px; line-height: 1.7; color: #6b5b7b;">
+              Use the Add to Calendar button below, or update your calendar from the attached .ics file.
+            </p>
+          </div>
+        </div>
       `,
       ctaLabel: options.joinUrl ? 'Join Virtual Session' : 'View Sessions',
       ctaHref: options.joinUrl || getAppLink('/sessions'),
