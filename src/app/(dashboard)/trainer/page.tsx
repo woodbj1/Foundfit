@@ -502,43 +502,45 @@ export default function TrainerDashboardPage() {
       </div>
 
       <Tabs defaultValue="bookings" className="w-full space-y-6">
-        <div className="flex flex-col gap-4 rounded-3xl border border-border/60 bg-white/80 p-5 shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold tracking-tight">Your week at a glance</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Start with bookings, then jump into schedule or settings only when you need them.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:items-end">
-            <TabsList className="h-auto w-fit flex-wrap rounded-full bg-muted/70 p-1">
-              <TabsTrigger
-                value="bookings"
-                className="rounded-full px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
-              >
-                <List className="mr-2 h-4 w-4" />
-                Bookings
-              </TabsTrigger>
-              <TabsTrigger
-                value="schedule"
-                className="rounded-full px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
-              >
-                <Calendar className="mr-2 h-4 w-4" />
-                My Schedule
-              </TabsTrigger>
-              <TabsTrigger
-                value="settings"
-                className="rounded-full px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
-              >
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
-              </TabsTrigger>
-            </TabsList>
-            <p className="text-xs text-muted-foreground">Times shown in {displayTimezone}</p>
+        <div className="rounded-3xl border border-border/60 bg-white/80 p-5 shadow-sm backdrop-blur">
+          <div className="flex flex-col gap-4">
+            <div>
+              <h2 className="text-xl font-semibold tracking-tight">Your week at a glance</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Start with bookings, then jump into schedule or settings only when you need them.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <TabsList className="h-auto w-full justify-start rounded-2xl bg-muted/70 p-1 sm:w-fit">
+                <TabsTrigger
+                  value="bookings"
+                  className="rounded-xl px-3 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                >
+                  <List className="mr-2 h-4 w-4" />
+                  Bookings
+                </TabsTrigger>
+                <TabsTrigger
+                  value="schedule"
+                  className="rounded-xl px-3 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                >
+                  <Calendar className="mr-2 h-4 w-4" />
+                  My Schedule
+                </TabsTrigger>
+                <TabsTrigger
+                  value="settings"
+                  className="rounded-xl px-3 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </TabsTrigger>
+              </TabsList>
+              <p className="text-xs text-muted-foreground">Times shown in {displayTimezone}</p>
+            </div>
           </div>
         </div>
 
         <TabsContent value="bookings" className="mt-0">
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_360px]">
+          <div className="space-y-6">
             <Card className="border-none shadow-sm">
               <CardHeader className="pb-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -559,7 +561,7 @@ export default function TrainerDashboardPage() {
                     No trainer profile found yet.
                   </div>
                 ) : (
-                  <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-7">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-7">
                     {upcomingWeek.map((day) => (
                       <div
                         key={day.dateKey}
@@ -662,7 +664,7 @@ export default function TrainerDashboardPage() {
                 )}
               </CardContent>
             </Card>
-            <div className="space-y-6">
+            <div className="grid gap-6 xl:grid-cols-2">
               <Card className="border-yellow-200 bg-yellow-50/70 shadow-sm">
                 <CardHeader className="pb-4">
                   <div className="flex items-center justify-between gap-3">
@@ -836,7 +838,7 @@ export default function TrainerDashboardPage() {
         </TabsContent>
 
         <TabsContent value="schedule" className="mt-0">
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_340px]">
+          <div className="space-y-6">
             <Card className="border-none shadow-sm">
               <CardHeader className="pb-4">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -927,7 +929,7 @@ export default function TrainerDashboardPage() {
               </CardContent>
             </Card>
 
-            <div className="space-y-6">
+            <div className="grid gap-6 xl:grid-cols-2">
               <Card className="border-none shadow-sm">
                 <CardHeader className="pb-3">
                   <CardTitle>Next Confirmed Session</CardTitle>
@@ -1013,129 +1015,138 @@ export default function TrainerDashboardPage() {
         </TabsContent>
 
         <TabsContent value="settings" className="mt-0">
-          <div className="grid gap-6 xl:grid-cols-2">
+          <div className="space-y-6">
             <Card className="border-none shadow-sm">
               <CardHeader>
-                <CardTitle>Booking Preferences</CardTitle>
+                <CardTitle className="text-2xl">Trainer Settings</CardTitle>
                 <CardDescription>
-                  Choose whether client sessions require approval or confirm instantly.
+                  Update how requests are approved and keep your calendar connection healthy.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
-                  <p className="text-sm text-muted-foreground">Current mode</p>
-                  <p className="mt-2 text-lg font-semibold text-foreground">
-                    {bookingPref === 'instant_confirmation'
-                      ? 'Instant Confirmation'
-                      : 'Request System'}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {bookingPref === 'instant_confirmation'
-                      ? 'Clients can book open times without waiting for approval.'
-                      : 'You review new requests before they appear as confirmed sessions.'}
-                  </p>
+              <CardContent className="grid gap-6 2xl:grid-cols-2">
+                <div className="space-y-4 rounded-3xl border border-border/70 bg-muted/20 p-5">
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground">Booking Preferences</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Choose whether client sessions require approval or confirm instantly.
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/70 bg-white p-4">
+                    <p className="text-sm text-muted-foreground">Current mode</p>
+                    <p className="mt-2 text-lg font-semibold text-foreground">
+                      {bookingPref === 'instant_confirmation'
+                        ? 'Instant Confirmation'
+                        : 'Request System'}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {bookingPref === 'instant_confirmation'
+                        ? 'Clients can book open times without waiting for approval.'
+                        : 'You review new requests before they appear as confirmed sessions.'}
+                    </p>
+                  </div>
+                  <Button
+                    variant={bookingPref === 'instant_confirmation' ? 'default' : 'outline'}
+                    onClick={toggleBookingPreference}
+                    disabled={updatingPref}
+                    className={cn(
+                      'w-full gap-2',
+                      bookingPref === 'instant_confirmation' && 'bg-green-600 hover:bg-green-700'
+                    )}
+                  >
+                    {updatingPref ? (
+                      'Updating...'
+                    ) : bookingPref === 'instant_confirmation' ? (
+                      <>
+                        <CheckCircle className="h-4 w-4" />
+                        Instant Confirmation Active
+                      </>
+                    ) : (
+                      <>
+                        <ToggleLeft className="h-4 w-4" />
+                        Request System Active
+                      </>
+                    )}
+                  </Button>
                 </div>
-                <Button
-                  variant={bookingPref === 'instant_confirmation' ? 'default' : 'outline'}
-                  onClick={toggleBookingPreference}
-                  disabled={updatingPref}
-                  className={cn(
-                    'w-full gap-2',
-                    bookingPref === 'instant_confirmation' && 'bg-green-600 hover:bg-green-700'
-                  )}
-                >
-                  {updatingPref ? (
-                    'Updating...'
-                  ) : bookingPref === 'instant_confirmation' ? (
-                    <>
-                      <CheckCircle className="h-4 w-4" />
-                      Instant Confirmation Active
-                    </>
-                  ) : (
-                    <>
-                      <ToggleLeft className="h-4 w-4" />
-                      Request System Active
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
 
-            <Card className="border-none shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5 text-purple-600" />
-                  Calendar and Timezone
-                </CardTitle>
-                <CardDescription>
-                  Your personal Google Calendar powers busy-slot checks and approved booking events.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div
-                  className={cn(
-                    'rounded-2xl border p-4',
-                    calendarStatus === 'connected'
-                      ? 'border-green-200 bg-green-50'
-                      : 'border-amber-200 bg-amber-50'
-                  )}
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h4 className="font-semibold text-foreground">Calendar integration status</h4>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {calendarStatus === 'connected'
-                          ? `Connected as ${calendarEmail || 'your primary Google Calendar'}.`
-                          : calendarStatus === 'reconnect_required'
-                            ? 'Your Google account needs to be reconnected with Calendar permission before FoundFit can create events for approved sessions.'
-                            : 'Connect your Google Calendar to block off busy time and sync approved bookings.'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Badge variant={calendarStatus === 'connected' ? 'default' : 'secondary'}>
-                        {calendarStatus === 'connected'
-                          ? 'Connected'
-                          : calendarStatus === 'reconnect_required'
-                            ? 'Reconnect required'
-                            : 'Setup required'}
-                      </Badge>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleConnectGoogle}
-                        disabled={connectingGoogle}
-                      >
-                        {connectingGoogle
-                          ? 'Connecting...'
-                          : calendarStatus === 'connected' || calendarStatus === 'reconnect_required'
-                            ? 'Reconnect'
-                            : 'Connect'}
-                      </Button>
+                <div className="space-y-6 rounded-3xl border border-border/70 bg-muted/20 p-5">
+                  <div>
+                    <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
+                      <Calendar className="h-5 w-5 text-purple-600" />
+                      Calendar and Timezone
+                    </h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Your personal Google Calendar powers busy-slot checks and approved booking
+                      events.
+                    </p>
+                  </div>
+
+                  <div
+                    className={cn(
+                      'rounded-2xl border p-4',
+                      calendarStatus === 'connected'
+                        ? 'border-green-200 bg-green-50'
+                        : 'border-amber-200 bg-amber-50'
+                    )}
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h4 className="font-semibold text-foreground">Calendar integration status</h4>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {calendarStatus === 'connected'
+                            ? `Connected as ${calendarEmail || 'your primary Google Calendar'}.`
+                            : calendarStatus === 'reconnect_required'
+                              ? 'Your Google account needs to be reconnected with Calendar permission before FoundFit can create events for approved sessions.'
+                              : 'Connect your Google Calendar to block off busy time and sync approved bookings.'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Badge variant={calendarStatus === 'connected' ? 'default' : 'secondary'}>
+                          {calendarStatus === 'connected'
+                            ? 'Connected'
+                            : calendarStatus === 'reconnect_required'
+                              ? 'Reconnect required'
+                              : 'Setup required'}
+                        </Badge>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleConnectGoogle}
+                          disabled={connectingGoogle}
+                        >
+                          {connectingGoogle
+                            ? 'Connecting...'
+                            : calendarStatus === 'connected' ||
+                                calendarStatus === 'reconnect_required'
+                              ? 'Reconnect'
+                              : 'Connect'}
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">Your Timezone</label>
-                  <Select
-                    value={profile?.timezone || 'America/New_York'}
-                    onValueChange={handleTimezoneChange}
-                    disabled={isUpdatingTimezone}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select timezone" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TIMEZONES.map((tz) => (
-                        <SelectItem key={tz} value={tz}>
-                          {tz}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    This timezone is used for dashboard display, emails, and booking times.
-                  </p>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Your Timezone</label>
+                    <Select
+                      value={profile?.timezone || 'America/New_York'}
+                      onValueChange={handleTimezoneChange}
+                      disabled={isUpdatingTimezone}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select timezone" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TIMEZONES.map((tz) => (
+                          <SelectItem key={tz} value={tz}>
+                            {tz}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      This timezone is used for dashboard display, emails, and booking times.
+                    </p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
