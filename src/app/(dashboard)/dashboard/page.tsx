@@ -2,24 +2,20 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { format } from 'date-fns'
 import {
-  AlertCircle,
   Calendar,
   CheckCircle2,
   Clock,
   CreditCard,
   Download,
   Dumbbell,
-  ExternalLink,
   Library,
   Package,
-  ShoppingCart,
   UtensilsCrossed,
   XCircle,
 } from 'lucide-react'
 
+import CancelBookingButton from '@/components/bookings/cancel-button'
 import JoinDailyButton from '@/components/bookings/join-daily-button'
-import BillingPortalButton from '@/components/nav/billing-portal-button'
-import CheckoutButton from '@/components/payments/checkout-button'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -142,45 +138,16 @@ export default async function ClientDashboard() {
     .eq('client_id', user.id)
     .order('created_at', { ascending: false })
 
-  const { data: services } = await supabase
-    .from('services')
-    .select('*')
-    .eq('is_active', true)
-    .order('price', { ascending: true })
-
-  const sessionServices = services?.filter((service) => service.is_session !== false) ?? []
-
   return (
     <div className="space-y-8">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div>
         <div>
           <h1 className="text-3xl font-bold">
             Hey{profile?.full_name ? `, ${profile.full_name.split(' ')[0]}` : ''}!
           </h1>
           <p className="text-muted-foreground mt-1">Here&apos;s your training overview</p>
         </div>
-        <BillingPortalButton />
       </div>
-
-      {!hasBookableAccess && (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardContent className="pt-6 flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
-            <div>
-              <p className="font-medium text-amber-900">No active booking package</p>
-              <p className="text-sm text-amber-700 mt-0.5">
-                You don&apos;t have an active subscription or session pack for live training yet.
-              </p>
-              <Link href="/account">
-                <Button size="sm" className="mt-3 gap-2 bg-amber-600 hover:bg-amber-700 text-white">
-                  <ShoppingCart className="h-4 w-4" />
-                  Browse Packages
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -295,6 +262,12 @@ export default async function ClientDashboard() {
                         >
                           Reschedule
                         </Link>
+                        <CancelBookingButton
+                          bookingId={booking.id}
+                          label="Cancel"
+                          variant="outline"
+                          className="border-border"
+                        />
                         {booking.status === 'approved' && isVirtualLocation(booking.location_type) ? (
                           <JoinDailyButton bookingId={booking.id} />
                         ) : null}
@@ -441,15 +414,6 @@ export default async function ClientDashboard() {
                   </div>
                 </>
               ) : null}
-
-              {!primarySessionSubscription && activePacks.length === 0 && !libraryAccess ? (
-                <Link href="/account">
-                  <Button variant="outline" size="sm" className="w-full gap-2 mt-1">
-                    <ShoppingCart className="h-4 w-4" />
-                    Buy a Package
-                  </Button>
-                </Link>
-              ) : null}
             </CardContent>
           </Card>
 
@@ -495,47 +459,6 @@ export default async function ClientDashboard() {
         </div>
       </div>
 
-      {sessionServices.length > 0 ? (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-xl font-bold">Available Packages</h2>
-              <p className="text-sm text-muted-foreground">Purchase a package to start booking sessions</p>
-            </div>
-            <Link href="/account">
-              <Button variant="ghost" size="sm" className="gap-1">
-                View all <ExternalLink className="h-3.5 w-3.5" />
-              </Button>
-            </Link>
-          </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {sessionServices.map((service) => (
-              <Card key={service.id} className="hover:border-primary/50 transition-colors">
-                <CardContent className="pt-5">
-                  <h4 className="font-semibold">{service.name}</h4>
-                  <p className="text-2xl font-bold text-primary mt-1">
-                    {formatPrice(service.price)}
-                    {service.type === 'unlimited' ? (
-                      <span className="text-sm font-normal text-muted-foreground">/mo</span>
-                    ) : null}
-                  </p>
-                  {service.session_count ? (
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {service.session_count} session{service.session_count !== 1 ? 's' : ''}
-                    </p>
-                  ) : null}
-                  <p className="text-xs text-muted-foreground mt-1 mb-3 line-clamp-2">
-                    {service.description}
-                  </p>
-                  <CheckoutButton serviceId={service.id} size="sm" variant="outline" className="w-full">
-                    Purchase
-                  </CheckoutButton>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      ) : null}
     </div>
   )
 }

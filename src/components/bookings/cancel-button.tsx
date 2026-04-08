@@ -1,12 +1,29 @@
 'use client'
 
 import { useState } from 'react'
+import type { ComponentProps } from 'react'
 import { Button } from '@/components/ui/button'
 import { Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
+import { cn } from '@/lib/utils'
 
-export default function CancelBookingButton({ bookingId }: { bookingId: string }) {
+type ButtonVariant = ComponentProps<typeof Button>['variant']
+type ButtonSize = ComponentProps<typeof Button>['size']
+
+export default function CancelBookingButton({
+  bookingId,
+  label,
+  variant = 'ghost',
+  size = 'sm',
+  className,
+}: {
+  bookingId: string
+  label?: string
+  variant?: ButtonVariant
+  size?: ButtonSize
+  className?: string
+}) {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
 
@@ -30,8 +47,15 @@ export default function CancelBookingButton({ bookingId }: { bookingId: string }
   }
 
   return (
-    <Button variant="ghost" size="sm" onClick={handleCancel} disabled={loading} className="text-destructive hover:text-destructive">
+    <Button
+      variant={variant}
+      size={size}
+      onClick={handleCancel}
+      disabled={loading}
+      className={cn('text-destructive hover:text-destructive', className)}
+    >
       {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+      {label ? <span>{label}</span> : null}
     </Button>
   )
 }
