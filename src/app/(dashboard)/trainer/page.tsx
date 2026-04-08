@@ -1,13 +1,8 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import type { ComponentType } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
   Building2,
   Calendar,
@@ -24,10 +19,24 @@ import {
   Video,
 } from 'lucide-react'
 import JoinDailyButton from '@/components/bookings/join-daily-button'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getBookingLocationLabel, isVirtualLocation } from '@/lib/booking-display'
+import {
+  formatBookingLongDate,
+  formatBookingTime,
+  formatBookingTimeRange,
+  formatBookingWeekdayDate,
+} from '@/lib/booking-time'
+import { createClient } from '@/lib/supabase/client'
 import { formatScheduleTime, groupScheduleRulesByDay } from '@/lib/trainer-schedule'
-import { toast } from 'sonner'
+import { getCurrentDateInTimeZone, getDateStringInTimeZone } from '@/lib/timezone'
 import type { BookingPreference, TrainerScheduleRule, UserRole } from '@/lib/types'
+import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 
 const TIMEZONES = [
   'UTC',
@@ -39,6 +48,8 @@ const TIMEZONES = [
   'Europe/Paris',
   'Asia/Tokyo',
 ]
+
+const UPCOMING_WINDOW_DAYS = 7
 
 type Profile = {
   id: string
@@ -78,6 +89,49 @@ type TrainerRecord = {
   onboarding_completed_at: string | null
 }
 
+type UpcomingDay = {
+  dateKey: string
+  sessions: BookingRow[]
+  isToday: boolean
+}
+
+function addDaysToDateString(dateString: string, days: number) {
+  const next = new Date(`${dateString}T00:00:00Z`)
+  next.setUTCDate(next.getUTCDate() + days)
+  return next.toISOString().slice(0, 10)
+}
+
+function SummaryCard({
+  title,
+  value,
+  detail,
+  icon: Icon,
+  accentClassName,
+}: {
+  title: string
+  value: string
+  detail: string
+  icon: ComponentType<{ className?: string }>
+  accentClassName: string
+}) {
+  return (
+    <Card className="border-none shadow-sm">
+      <CardContent className="flex items-start justify-between gap-4 p-5">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            {title}
+          </p>
+          <p className="mt-2 text-2xl font-bold text-foreground">{value}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
+        </div>
+        <div className={cn('flex h-11 w-11 items-center justify-center rounded-2xl', accentClassName)}>
+          <Icon className="h-5 w-5" />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function TrainerDashboardPage() {
   const router = useRouter()
   const [supabase] = useState(() => createClient())
@@ -93,10 +147,28 @@ export default function TrainerDashboardPage() {
   const [bookingPref, setBookingPref] = useState('request_system')
   const [updatingPref, setUpdatingPref] = useState(false)
   const [isUpdatingTimezone, setIsUpdatingTimezone] = useState(false)
-  const groupedSchedule = useMemo(
-    () => groupScheduleRulesByDay(scheduleRules),
-    [scheduleRules]
-  )
+
+  const groupedSchedule = useMemo(() => groupScheduleRulesByDay(scheduleRules), [scheduleRules])
+  const displayTimezone = profile?.timezone || 'America/New_York'
+  const upcomingWeek = useMemo<UpcomingDay[]>(() => {
+    const todayKey = getCurrentDateInTimeZone(displayTimezone)
+
+    return Array.from({ length: UPCOMING_WINDOW_DAYS }, (_, index) => {
+      const dateKey = addDaysToDateString(todayKey, index)
+
+      return {
+        dateKey,
+        isToday: index === 0,
+        sessions: confirmedSessions.filter(
+          (session) => getDateStringInTimeZone(session.start_time, displayTimezone) === dateKey
+        ),
+      }
+    })
+  }, [confirmedSessions, displayTimezone])
+  const nextSession = confirmedSessions[0] ?? null
+  const upcomingWeekSessionCount = upcomingWeek.reduce((count, day) => count + day.sessions.length, 0)
+  const activeWorkDays = groupedSchedule.filter((day) => day.workHours.length > 0).length
+  const totalBlockedRules = groupedSchedule.reduce((count, day) => count + day.blocked.length, 0)
 
   const fetchData = useCallback(async (userId: string) => {
     try {
@@ -113,7 +185,9 @@ export default function TrainerDashboardPage() {
 
       const { data: trainerData } = await supabase
         .from('trainers')
-        .select('id, user_id, google_calendar_connected_at, google_calendar_email, onboarding_completed_at')
+        .select(
+          'id, user_id, google_calendar_connected_at, google_calendar_email, onboarding_completed_at'
+        )
         .eq('user_id', userId)
         .single()
 
@@ -140,13 +214,17 @@ export default function TrainerDashboardPage() {
       const [{ data: pendingData }, { data: confirmedData }, nextScheduleRules] = await Promise.all([
         supabase
           .from('bookings')
-          .select('id, client_id, trainer_id, start_time, end_time, status, location_type, travel_address, notes, google_calendar_event_id, daily_room_url, client:profiles!bookings_client_id_fkey(full_name, email), service:services(name)')
+          .select(
+            'id, client_id, trainer_id, start_time, end_time, status, location_type, travel_address, notes, google_calendar_event_id, daily_room_url, client:profiles!bookings_client_id_fkey(full_name, email), service:services(name)'
+          )
           .eq('trainer_id', trainerData.id)
           .eq('status', 'pending')
           .order('start_time', { ascending: true }),
         supabase
           .from('bookings')
-          .select('id, client_id, trainer_id, start_time, end_time, status, location_type, travel_address, notes, google_calendar_event_id, daily_room_url, client:profiles!bookings_client_id_fkey(full_name, email), service:services(name)')
+          .select(
+            'id, client_id, trainer_id, start_time, end_time, status, location_type, travel_address, notes, google_calendar_event_id, daily_room_url, client:profiles!bookings_client_id_fkey(full_name, email), service:services(name)'
+          )
           .eq('trainer_id', trainerData.id)
           .eq('status', 'approved')
           .gte('start_time', new Date().toISOString())
@@ -231,10 +309,15 @@ export default function TrainerDashboardPage() {
     setUpdatingPref(true)
     const newPref = bookingPref === 'request_system' ? 'instant_confirmation' : 'request_system'
     try {
-      const { error } = await supabase.from('profiles').update({ booking_preference: newPref }).eq('id', user.id)
+      const { error } = await supabase
+        .from('profiles')
+        .update({ booking_preference: newPref })
+        .eq('id', user.id)
       if (error) throw error
       setBookingPref(newPref)
-      toast.success(`Booking mode set to ${newPref === 'instant_confirmation' ? 'Instant Confirmation' : 'Request System'}.`)
+      toast.success(
+        `Booking mode set to ${newPref === 'instant_confirmation' ? 'Instant Confirmation' : 'Request System'}.`
+      )
     } catch {
       toast.error('Could not update booking preference.')
     } finally {
@@ -257,9 +340,9 @@ export default function TrainerDashboardPage() {
 
   if (loading && !profile) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="flex min-h-[60vh] items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto" />
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-purple-600" />
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -268,317 +351,689 @@ export default function TrainerDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-600 via-purple-600 to-cyan-600 bg-clip-text text-transparent">
-          Trainer Dashboard
-        </h1>
-        <div className="flex items-center gap-3">
-          <Button onClick={handleLogout} variant="outline" className="border-purple-500 text-purple-600 hover:bg-purple-50">
-            <LogOut className="h-4 w-4 mr-2" />
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            Trainer Portal
+          </p>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight">Trainer Dashboard</h1>
+          <p className="mt-1 text-muted-foreground">
+            Keep your week organized, review requests quickly, and stay on top of your live schedule.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={() => router.push('/trainer/availability')}
+            className="gap-2"
+            disabled={!trainer}
+          >
+            <CalendarClock className="h-4 w-4" />
+            Manage Availability
+          </Button>
+          <Button onClick={handleLogout} variant="outline" className="gap-2">
+            <LogOut className="h-4 w-4" />
             Logout
           </Button>
         </div>
       </div>
 
-      <div className="bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 rounded-2xl p-8 text-white shadow-xl">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-inner">
-              <span className="text-2xl font-bold text-purple-600">
-                {profile?.full_name?.charAt(0)?.toUpperCase() || <User className="h-8 w-8 text-purple-600" />}
-              </span>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_repeat(3,minmax(0,1fr))]">
+        <Card className="border-none bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-500 text-white shadow-xl xl:col-span-1">
+          <CardContent className="flex h-full flex-col justify-between gap-6 p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-2xl font-bold text-purple-600 shadow-inner">
+                {profile?.full_name?.charAt(0)?.toUpperCase() || (
+                  <User className="h-8 w-8 text-purple-600" />
+                )}
+              </div>
+              <div className="space-y-1">
+                <h2 className="text-2xl font-bold">{profile?.full_name || 'Trainer'}</h2>
+                <p className="text-sm text-white/85">
+                  {trainer
+                    ? 'Your schedule, pending requests, and calendar sync all live here.'
+                    : 'You need to be added as a trainer before bookings can flow into your portal.'}
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-3xl font-bold">Welcome, {profile?.full_name}!</h2>
-              <p className="text-purple-100 mt-1">Manage your schedule and client sessions</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className="bg-white/20 text-white hover:bg-white/20">
+                {bookingPref === 'instant_confirmation' ? 'Instant confirmation' : 'Request system'}
+              </Badge>
+              <Badge className="bg-white/20 text-white hover:bg-white/20">
+                {trainer?.google_calendar_connected_at ? 'Calendar connected' : 'Calendar setup needed'}
+              </Badge>
             </div>
-          </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 border border-white/20">
-            <div className="text-white/80 text-sm">
-              {trainer ? 'Trainer profile active' : 'You need to be added as a trainer to receive bookings'}
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
+
+        <SummaryCard
+          title="Pending"
+          value={String(pendingBookings.length)}
+          detail={pendingBookings.length === 0 ? 'Nothing waiting on approval' : 'Requests ready for review'}
+          icon={Clock}
+          accentClassName="bg-amber-100 text-amber-700"
+        />
+        <SummaryCard
+          title="Upcoming Week"
+          value={String(upcomingWeekSessionCount)}
+          detail={
+            nextSession
+              ? `Next: ${formatBookingWeekdayDate(nextSession.start_time, displayTimezone)}`
+              : 'No confirmed sessions yet'
+          }
+          icon={Calendar}
+          accentClassName="bg-emerald-100 text-emerald-700"
+        />
+        <SummaryCard
+          title="Availability"
+          value={`${activeWorkDays}/7`}
+          detail={`${totalBlockedRules} blocked rule${totalBlockedRules === 1 ? '' : 's'} this week`}
+          icon={CalendarClock}
+          accentClassName="bg-purple-100 text-purple-700"
+        />
       </div>
 
-      <Tabs defaultValue="bookings" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-8 bg-white/50 backdrop-blur p-1 rounded-xl">
-          <TabsTrigger value="bookings" className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg py-3">
-            <List className="w-4 h-4 mr-2" /> Bookings
-          </TabsTrigger>
-          <TabsTrigger value="schedule" className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg py-3">
-            <Calendar className="w-4 h-4 mr-2" /> My Schedule
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="data-[state=active]:bg-white data-[state=active]:shadow-sm rounded-lg py-3">
-            <Settings className="w-4 h-4 mr-2" /> Settings
-          </TabsTrigger>
-        </TabsList>
+      <Tabs defaultValue="bookings" className="w-full space-y-6">
+        <div className="flex flex-col gap-4 rounded-3xl border border-border/60 bg-white/80 p-5 shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold tracking-tight">Your week at a glance</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Start with bookings, then jump into schedule or settings only when you need them.
+            </p>
+          </div>
+          <div className="flex flex-col gap-3 sm:items-end">
+            <TabsList className="h-auto w-fit flex-wrap rounded-full bg-muted/70 p-1">
+              <TabsTrigger
+                value="bookings"
+                className="rounded-full px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+              >
+                <List className="mr-2 h-4 w-4" />
+                Bookings
+              </TabsTrigger>
+              <TabsTrigger
+                value="schedule"
+                className="rounded-full px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+              >
+                <Calendar className="mr-2 h-4 w-4" />
+                My Schedule
+              </TabsTrigger>
+              <TabsTrigger
+                value="settings"
+                className="rounded-full px-4 py-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+              >
+                <Settings className="mr-2 h-4 w-4" />
+                Settings
+              </TabsTrigger>
+            </TabsList>
+            <p className="text-xs text-muted-foreground">Times shown in {displayTimezone}</p>
+          </div>
+        </div>
 
-        <TabsContent value="bookings" className="space-y-6">
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-yellow-400">
-            <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <Clock className="h-5 w-5 text-yellow-500" /> Pending Requests
-            </h3>
-            {!trainer ? (
-              <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">No trainer profile found yet.</div>
-            ) : pendingBookings.length === 0 ? (
-              <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">No pending requests</div>
-            ) : (
-              <div className="space-y-4">
-                {pendingBookings.map((booking) => (
-                  <div key={booking.id} className="border border-yellow-100 bg-yellow-50/50 rounded-xl p-4">
-                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                      <div>
-                        <p className="font-bold text-gray-900">{booking.client?.full_name || 'Client'}</p>
-                        <p className="text-sm text-gray-500">
-                          {new Date(booking.start_time).toLocaleDateString()} &bull; {new Date(booking.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                        </p>
-                        <p className="mt-1 text-xs text-gray-500">
-                          {booking.service?.name || 'Training Session'}
-                        </p>
-                        <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
-                          {isVirtualLocation(booking.location_type) ? (
-                            <>
-                              <Video className="h-3.5 w-3.5" />
-                              Virtual
-                            </>
-                          ) : booking.location_type === 'gym' ? (
-                            <>
-                              <Building2 className="h-3.5 w-3.5" />
-                              Studio
-                            </>
-                          ) : (
-                            <>
-                              <MapPin className="h-3.5 w-3.5" />
-                              {getBookingLocationLabel(booking.location_type, booking.travel_address)}
-                            </>
-                          )}
-                        </p>
-                        {booking.notes && (
-                          <p className="text-xs text-gray-500 mt-1 italic">&ldquo;{booking.notes}&rdquo;</p>
+        <TabsContent value="bookings" className="mt-0">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_360px]">
+            <Card className="border-none shadow-sm">
+              <CardHeader className="pb-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <CardTitle className="text-2xl">Upcoming Week</CardTitle>
+                    <CardDescription className="mt-1">
+                      Review every confirmed booking day by day for the next seven days.
+                    </CardDescription>
+                  </div>
+                  <Badge className="w-fit bg-purple-100 text-purple-700 hover:bg-purple-100">
+                    {upcomingWeekSessionCount} session{upcomingWeekSessionCount === 1 ? '' : 's'}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {!trainer ? (
+                  <div className="rounded-2xl border border-dashed border-border bg-muted/30 px-6 py-14 text-center text-muted-foreground">
+                    No trainer profile found yet.
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-7">
+                    {upcomingWeek.map((day) => (
+                      <div
+                        key={day.dateKey}
+                        className={cn(
+                          'rounded-2xl border p-4 shadow-sm transition-colors',
+                          day.isToday ? 'border-purple-300 bg-purple-50/80' : 'border-border/70 bg-white'
+                        )}
+                      >
+                        <div className="mb-4 flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">
+                              {formatBookingWeekdayDate(`${day.dateKey}T12:00:00.000Z`, displayTimezone)}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {day.isToday
+                                ? 'Today'
+                                : formatBookingLongDate(`${day.dateKey}T12:00:00.000Z`, displayTimezone)}
+                            </p>
+                          </div>
+                          <Badge variant="secondary" className="bg-white/80 text-foreground shadow-sm">
+                            {day.sessions.length}
+                          </Badge>
+                        </div>
+
+                        {day.sessions.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-border bg-muted/30 px-3 py-8 text-center">
+                            <p className="text-sm font-medium text-foreground">Open for bookings</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              No confirmed sessions on this day.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {day.sessions.map((session) => (
+                              <div
+                                key={session.id}
+                                className="rounded-xl border border-border/70 bg-muted/20 p-3"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold text-foreground">
+                                      {session.client?.full_name || 'Client'}
+                                    </p>
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                      {formatBookingTimeRange(
+                                        session.start_time,
+                                        session.end_time,
+                                        displayTimezone
+                                      )}
+                                    </p>
+                                  </div>
+                                  <Badge className="bg-green-100 text-green-700 hover:bg-green-100">
+                                    Confirmed
+                                  </Badge>
+                                </div>
+
+                                <p className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                                  {session.service?.name || 'Training Session'}
+                                </p>
+
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                  <Badge variant="outline" className="gap-1 border-border/70 bg-white/80">
+                                    {isVirtualLocation(session.location_type) ? (
+                                      <>
+                                        <Video className="h-3.5 w-3.5" />
+                                        Virtual
+                                      </>
+                                    ) : session.location_type === 'gym' ? (
+                                      <>
+                                        <Building2 className="h-3.5 w-3.5" />
+                                        Studio
+                                      </>
+                                    ) : (
+                                      <>
+                                        <MapPin className="h-3.5 w-3.5" />
+                                        Travel
+                                      </>
+                                    )}
+                                  </Badge>
+                                  {session.google_calendar_event_id ? (
+                                    <Badge variant="outline" className="gap-1 border-border/70 bg-white/80">
+                                      <CheckCircle className="h-3.5 w-3.5 text-blue-500" />
+                                      Synced
+                                    </Badge>
+                                  ) : null}
+                                </div>
+
+                                {isVirtualLocation(session.location_type) ? (
+                                  <div className="mt-3">
+                                    <JoinDailyButton bookingId={session.id} />
+                                  </div>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => handleApproveRequest(booking)}
-                          disabled={processingId === booking.id}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          {processingId === booking.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Approve'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDeclineRequest(booking)}
-                          disabled={processingId === booking.id}
-                          className="text-red-600 border-red-200"
-                        >
-                          {processingId === booking.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Decline'}
-                        </Button>
-                      </div>
-                    </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-green-500">
-            <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-green-600" /> Upcoming Sessions
-            </h3>
-            {!trainer ? (
-              <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">No trainer profile found yet.</div>
-            ) : confirmedSessions.length === 0 ? (
-              <div className="text-center py-6 text-gray-500 bg-gray-50 rounded-lg">No confirmed sessions</div>
-            ) : (
-              <div className="space-y-3">
-                {confirmedSessions.map((session) => (
-                  <div key={session.id} className="flex justify-between items-center p-4 border border-gray-100 rounded-xl hover:bg-gray-50">
+                )}
+              </CardContent>
+            </Card>
+            <div className="space-y-6">
+              <Card className="border-yellow-200 bg-yellow-50/70 shadow-sm">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="font-bold text-gray-900">{session.client?.full_name || 'Client'}</p>
-                      <div className="flex gap-3 text-sm text-gray-500 mt-1">
-                        <span>{new Date(session.start_time).toLocaleDateString()}</span>
-                        <span>
-                          {new Date(session.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                          {' - '}
-                          {new Date(session.end_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-xs text-gray-500">
-                        {session.service?.name || 'Training Session'}
-                        {isVirtualLocation(session.location_type) ? ' • Virtual session' : ''}
+                      <CardTitle className="text-xl">Pending Session Requests</CardTitle>
+                      <CardDescription className="mt-1">
+                        Approve or decline new client requests quickly.
+                      </CardDescription>
+                    </div>
+                    <Badge className="bg-yellow-200 text-yellow-900 hover:bg-yellow-200">
+                      {pendingBookings.length}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {!trainer ? (
+                    <div className="rounded-2xl border border-dashed border-yellow-200 bg-white/80 px-4 py-8 text-center text-sm text-muted-foreground">
+                      No trainer profile found yet.
+                    </div>
+                  ) : pendingBookings.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-yellow-200 bg-white/80 px-4 py-8 text-center">
+                      <p className="text-sm font-medium text-foreground">You&apos;re all caught up</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        New booking requests will show up here.
                       </p>
                     </div>
-                    <div className="flex items-center gap-3">
-                      {isVirtualLocation(session.location_type) ? (
-                        <JoinDailyButton bookingId={session.id} />
-                      ) : null}
-                      {session.google_calendar_event_id && (
-                        <span className="text-xs text-gray-400 flex items-center">
-                          <CheckCircle className="w-3 h-3 mr-1 text-blue-400" /> Calendar
-                        </span>
-                      )}
-                      <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Confirmed</Badge>
+                  ) : (
+                    <div className="space-y-3">
+                      {pendingBookings.map((booking) => (
+                        <div
+                          key={booking.id}
+                          className="rounded-2xl border border-yellow-200 bg-white p-4 shadow-sm"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-foreground">
+                                {booking.client?.full_name || 'Client'}
+                              </p>
+                              <p className="mt-1 text-sm text-muted-foreground">
+                                {formatBookingLongDate(booking.start_time, displayTimezone)}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {formatBookingTime(booking.start_time, displayTimezone)}
+                              </p>
+                            </div>
+                            <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                              Pending
+                            </Badge>
+                          </div>
+
+                          <p className="mt-3 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                            {booking.service?.name || 'Training Session'}
+                          </p>
+                          <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                            {isVirtualLocation(booking.location_type) ? (
+                              <>
+                                <Video className="h-4 w-4" />
+                                Virtual
+                              </>
+                            ) : booking.location_type === 'gym' ? (
+                              <>
+                                <Building2 className="h-4 w-4" />
+                                Studio
+                              </>
+                            ) : (
+                              <>
+                                <MapPin className="h-4 w-4" />
+                                {getBookingLocationLabel(
+                                  booking.location_type,
+                                  booking.travel_address
+                                )}
+                              </>
+                            )}
+                          </p>
+                          {booking.notes ? (
+                            <p className="mt-2 text-sm italic text-muted-foreground">
+                              &ldquo;{booking.notes}&rdquo;
+                            </p>
+                          ) : null}
+
+                          <div className="mt-4 flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleApproveRequest(booking)}
+                              disabled={processingId === booking.id}
+                              className="flex-1 bg-green-600 hover:bg-green-700"
+                            >
+                              {processingId === booking.id ? (
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                              ) : (
+                                'Approve'
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeclineRequest(booking)}
+                              disabled={processingId === booking.id}
+                              className="flex-1 border-red-200 text-red-600"
+                            >
+                              {processingId === booking.id ? (
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                              ) : (
+                                'Decline'
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-none shadow-sm">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-xl">Availability Snapshot</CardTitle>
+                      <CardDescription className="mt-1">
+                        Keep an eye on open work days and recurring blocks.
+                      </CardDescription>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => router.push('/trainer/availability')}
+                      disabled={!trainer}
+                    >
+                      Manage
+                    </Button>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="schedule">
-          <div className="space-y-6">
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-800">Weekly Availability</h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Set work hours to define when clients can book, then add blocks for lunch,
-                    appointments, school pickup, or other repeating unavailable time.
-                  </p>
-                </div>
-                <Button onClick={() => router.push('/trainer/availability')} size="sm" disabled={!trainer}>
-                  <CalendarClock className="mr-2 h-4 w-4" />
-                  Manage Availability
-                </Button>
-              </div>
-
-              {!trainer ? (
-                <div className="mt-6 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 py-12 text-center">
-                  <p className="text-gray-500">You need a trainer profile before setting availability.</p>
-                </div>
-              ) : scheduleRules.length === 0 ? (
-                <div className="mt-6 rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 py-12 text-center">
-                  <p className="mb-4 text-gray-500">You haven&apos;t set work hours yet.</p>
-                  <Button variant="outline" onClick={() => router.push('/trainer/availability')}>
-                    Set Work Hours
-                  </Button>
-                </div>
-              ) : (
-                <div className="mt-6 space-y-3">
+                </CardHeader>
+                <CardContent className="space-y-3">
                   {groupedSchedule.map(({ day, workHours, blocked }) => (
                     <div
                       key={day}
-                      className="rounded-xl border border-gray-100 p-4 transition-colors hover:border-purple-200"
+                      className="flex items-start justify-between gap-4 rounded-2xl border border-border/70 bg-muted/20 px-4 py-3"
                     >
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <p className="font-bold text-gray-900">{day}</p>
-                          {workHours.length > 0 ? (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {workHours.map((rule) => (
-                                <Badge
-                                  key={rule.id}
-                                  className="bg-purple-100 text-purple-700 hover:bg-purple-100"
-                                >
-                                  {formatScheduleTime(rule.start_time)} - {formatScheduleTime(rule.end_time)}
-                                </Badge>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="mt-2 text-sm text-gray-500">Unavailable for bookings</p>
-                          )}
-                        </div>
-
-                        <div className="min-w-[140px] text-left sm:text-right">
-                          <p className="text-xs uppercase tracking-wide text-gray-400">Blocks</p>
-                          <p className="mt-1 text-sm font-medium text-gray-700">
-                            {blocked.length === 0
-                              ? 'No blocks'
-                              : `${blocked.length} block${blocked.length === 1 ? '' : 's'}`}
+                      <div>
+                        <p className="font-medium text-foreground">{day}</p>
+                        {workHours.length > 0 ? (
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {workHours
+                              .map(
+                                (rule) =>
+                                  `${formatScheduleTime(rule.start_time)} - ${formatScheduleTime(rule.end_time)}`
+                              )
+                              .join(', ')}
                           </p>
-                          {blocked.length > 0 ? (
-                            <p className="mt-1 text-xs text-gray-500">
-                              {blocked
-                                .slice(0, 2)
-                                .map((rule) =>
-                                  `${rule.label || 'Blocked'} (${formatScheduleTime(rule.start_time)} - ${formatScheduleTime(rule.end_time)})`
-                                )
-                                .join(', ')}
-                              {blocked.length > 2 ? '...' : ''}
-                            </p>
-                          ) : null}
-                        </div>
+                        ) : (
+                          <p className="mt-1 text-sm text-muted-foreground">Unavailable</p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          Blocks
+                        </p>
+                        <p className="mt-1 text-sm font-medium text-foreground">
+                          {blocked.length === 0
+                            ? 'None'
+                            : `${blocked.length} block${blocked.length === 1 ? '' : 's'}`}
+                        </p>
                       </div>
                     </div>
                   ))}
-                </div>
-              )}
+                </CardContent>
+              </Card>
             </div>
           </div>
         </TabsContent>
 
-        <TabsContent value="settings">
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Booking Preferences</CardTitle>
-                <CardDescription>
-                  Choose how clients book your services. Request System means manual approval. Instant Confirmation is for direct booking.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                  Current mode:{' '}
-                  <span className="font-semibold text-purple-700">
-                    {bookingPref === 'instant_confirmation' ? 'Instant Confirmation' : 'Request System'}
-                  </span>
-                </div>
-                <div className="flex flex-col items-end gap-1">
+        <TabsContent value="schedule" className="mt-0">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_340px]">
+            <Card className="border-none shadow-sm">
+              <CardHeader className="pb-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <CardTitle className="text-2xl">Weekly Availability</CardTitle>
+                    <CardDescription className="mt-1">
+                      Set work hours to control client booking windows, then layer in recurring
+                      blocks for lunch, errands, pickups, and other protected time.
+                    </CardDescription>
+                  </div>
                   <Button
-                    variant={bookingPref === 'instant_confirmation' ? 'default' : 'outline'}
-                    onClick={toggleBookingPreference}
-                    disabled={updatingPref}
-                    className={`gap-2 ${bookingPref === 'instant_confirmation' ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                    onClick={() => router.push('/trainer/availability')}
+                    size="sm"
+                    disabled={!trainer}
+                    className="gap-2"
                   >
-                    {updatingPref ? (
-                      'Updating...'
-                    ) : bookingPref === 'instant_confirmation' ? (
-                      <><CheckCircle className="w-4 h-4" /> Instant Active</>
-                    ) : (
-                      <><ToggleLeft className="w-4 h-4" /> Request System Active</>
-                    )}
+                    <CalendarClock className="h-4 w-4" />
+                    Manage Availability
                   </Button>
-                  <span className="text-xs text-gray-400">Click to toggle</span>
                 </div>
+              </CardHeader>
+              <CardContent>
+                {!trainer ? (
+                  <div className="rounded-2xl border border-dashed border-border bg-muted/30 py-14 text-center">
+                    <p className="text-muted-foreground">
+                      You need a trainer profile before setting availability.
+                    </p>
+                  </div>
+                ) : scheduleRules.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border bg-muted/30 py-14 text-center">
+                    <p className="mb-4 text-muted-foreground">You haven&apos;t set work hours yet.</p>
+                    <Button variant="outline" onClick={() => router.push('/trainer/availability')}>
+                      Set Work Hours
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {groupedSchedule.map(({ day, workHours, blocked }) => (
+                      <div
+                        key={day}
+                        className="rounded-2xl border border-border/70 bg-muted/20 p-4"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="font-semibold text-foreground">{day}</p>
+                          <Badge variant="outline" className="border-border/70 bg-white/80">
+                            {blocked.length === 0
+                              ? 'No blocks'
+                              : `${blocked.length} block${blocked.length === 1 ? '' : 's'}`}
+                          </Badge>
+                        </div>
+
+                        {workHours.length > 0 ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {workHours.map((rule) => (
+                              <Badge
+                                key={rule.id}
+                                className="bg-purple-100 text-purple-700 hover:bg-purple-100"
+                              >
+                                {formatScheduleTime(rule.start_time)} - {formatScheduleTime(rule.end_time)}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-3 text-sm text-muted-foreground">Unavailable for bookings</p>
+                        )}
+
+                        {blocked.length > 0 ? (
+                          <div className="mt-4 space-y-2">
+                            {blocked.map((rule) => (
+                              <div
+                                key={rule.id}
+                                className="rounded-xl border border-border/70 bg-white px-3 py-2"
+                              >
+                                <p className="text-sm font-medium text-foreground">
+                                  {rule.label || 'Blocked'}
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {formatScheduleTime(rule.start_time)} - {formatScheduleTime(rule.end_time)}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
-            <Card>
+            <div className="space-y-6">
+              <Card className="border-none shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle>Next Confirmed Session</CardTitle>
+                  <CardDescription>Your upcoming appointment at a glance.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {nextSession ? (
+                    <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+                      <p className="font-semibold text-foreground">
+                        {nextSession.client?.full_name || 'Client'}
+                      </p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {formatBookingLongDate(nextSession.start_time, displayTimezone)}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatBookingTimeRange(
+                          nextSession.start_time,
+                          nextSession.end_time,
+                          displayTimezone
+                        )}
+                      </p>
+                      <p className="mt-3 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                        {nextSession.service?.name || 'Training Session'}
+                      </p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {getBookingLocationLabel(nextSession.location_type, nextSession.travel_address)}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
+                      No confirmed sessions yet.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              <Card className="border-none shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle>Calendar Sync</CardTitle>
+                  <CardDescription>
+                    Google Calendar keeps busy time and approved events aligned.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div
+                    className={cn(
+                      'rounded-2xl border px-4 py-4',
+                      trainer?.google_calendar_connected_at
+                        ? 'border-green-200 bg-green-50'
+                        : 'border-amber-200 bg-amber-50'
+                    )}
+                  >
+                    <p className="font-semibold text-foreground">
+                      {trainer?.google_calendar_connected_at
+                        ? 'Calendar connected'
+                        : 'Calendar setup needed'}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {trainer?.google_calendar_connected_at
+                        ? `Connected as ${trainer.google_calendar_email || 'your primary Google Calendar'}.`
+                        : 'Connect Google Calendar so external events block booking conflicts automatically.'}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push('/trainer-setup')}
+                    className="w-full"
+                  >
+                    {trainer?.google_calendar_connected_at
+                      ? 'Reconnect Google Calendar'
+                      : 'Finish Setup'}
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="settings" className="mt-0">
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Card className="border-none shadow-sm">
+              <CardHeader>
+                <CardTitle>Booking Preferences</CardTitle>
+                <CardDescription>
+                  Choose whether client sessions require approval or confirm instantly.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+                  <p className="text-sm text-muted-foreground">Current mode</p>
+                  <p className="mt-2 text-lg font-semibold text-foreground">
+                    {bookingPref === 'instant_confirmation'
+                      ? 'Instant Confirmation'
+                      : 'Request System'}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {bookingPref === 'instant_confirmation'
+                      ? 'Clients can book open times without waiting for approval.'
+                      : 'You review new requests before they appear as confirmed sessions.'}
+                  </p>
+                </div>
+                <Button
+                  variant={bookingPref === 'instant_confirmation' ? 'default' : 'outline'}
+                  onClick={toggleBookingPreference}
+                  disabled={updatingPref}
+                  className={cn(
+                    'w-full gap-2',
+                    bookingPref === 'instant_confirmation' && 'bg-green-600 hover:bg-green-700'
+                  )}
+                >
+                  {updatingPref ? (
+                    'Updating...'
+                  ) : bookingPref === 'instant_confirmation' ? (
+                    <>
+                      <CheckCircle className="h-4 w-4" />
+                      Instant Confirmation Active
+                    </>
+                  ) : (
+                    <>
+                      <ToggleLeft className="h-4 w-4" />
+                      Request System Active
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Calendar className="h-5 w-5 text-purple-600" />
-                  Google Calendar Settings
+                  Calendar and Timezone
                 </CardTitle>
                 <CardDescription>
                   Your personal Google Calendar powers busy-slot checks and approved booking events.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className={`flex items-center justify-between p-4 rounded-lg border ${trainer?.google_calendar_connected_at ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
-                  <div>
-                    <h4 className="font-semibold text-gray-900">Calendar integration status</h4>
-                    <p className="text-sm text-gray-500">
-                      {trainer?.google_calendar_connected_at
-                        ? `Connected as ${trainer.google_calendar_email || 'your primary Google Calendar'}.`
-                        : 'Connect your Google Calendar to block off busy time and sync approved bookings.'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant={trainer?.google_calendar_connected_at ? 'default' : 'secondary'}>
-                      {trainer?.google_calendar_connected_at ? 'Connected' : 'Setup required'}
-                    </Badge>
-                    <Button variant="outline" size="sm" onClick={() => router.push('/trainer-setup')}>
-                      {trainer?.google_calendar_connected_at ? 'Reconnect' : 'Finish setup'}
-                    </Button>
+                <div
+                  className={cn(
+                    'rounded-2xl border p-4',
+                    trainer?.google_calendar_connected_at
+                      ? 'border-green-200 bg-green-50'
+                      : 'border-amber-200 bg-amber-50'
+                  )}
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h4 className="font-semibold text-foreground">Calendar integration status</h4>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {trainer?.google_calendar_connected_at
+                          ? `Connected as ${trainer.google_calendar_email || 'your primary Google Calendar'}.`
+                          : 'Connect your Google Calendar to block off busy time and sync approved bookings.'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Badge
+                        variant={trainer?.google_calendar_connected_at ? 'default' : 'secondary'}
+                      >
+                        {trainer?.google_calendar_connected_at ? 'Connected' : 'Setup required'}
+                      </Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push('/trainer-setup')}
+                      >
+                        {trainer?.google_calendar_connected_at ? 'Reconnect' : 'Finish setup'}
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700">Your Timezone</label>
+                  <label className="text-sm font-medium text-foreground">Your Timezone</label>
                   <Select
                     value={profile?.timezone || 'America/New_York'}
                     onValueChange={handleTimezoneChange}
@@ -589,18 +1044,21 @@ export default function TrainerDashboardPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {TIMEZONES.map((tz) => (
-                        <SelectItem key={tz} value={tz}>{tz}</SelectItem>
+                        <SelectItem key={tz} value={tz}>
+                          {tz}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-gray-500">This timezone is used for calendar-related display and scheduling.</p>
+                  <p className="text-xs text-muted-foreground">
+                    This timezone is used for dashboard display, emails, and booking times.
+                  </p>
                 </div>
               </CardContent>
             </Card>
           </div>
         </TabsContent>
       </Tabs>
-
     </div>
   )
 }
