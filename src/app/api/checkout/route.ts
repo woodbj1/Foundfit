@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/app-url'
 import { createClient } from '@/lib/supabase/server'
 import { getStripe } from '@/lib/stripe'
 import { isDailyConfigured } from '@/lib/daily'
@@ -76,7 +77,7 @@ export async function POST(request: NextRequest) {
     customerId = customer.id
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const appUrl = getAppUrl(request)
   const successPath = service.fulfillment_type === 'vimeo'
     ? '/library?checkout=success'
     : '/dashboard?checkout=success'

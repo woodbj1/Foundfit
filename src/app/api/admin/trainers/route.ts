@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrlForPath } from '@/lib/app-url'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { sendEmail } from '@/lib/email'
 import { SITE } from '@/lib/site-config'
@@ -19,11 +20,13 @@ function generatePassword(length = 16): string {
   return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
 }
 
-function trainerWelcomeEmail(fullName: string, email: string, tempPassword?: string) {
-  const setupUrl = new URL(
-    `/trainer-setup?email=${encodeURIComponent(email)}`,
-    process.env.NEXT_PUBLIC_APP_URL || SITE.url
-  ).toString()
+function trainerWelcomeEmail(
+  fullName: string,
+  email: string,
+  request: NextRequest,
+  tempPassword?: string
+) {
+  const setupUrl = getAppUrlForPath(`/trainer-setup?email=${encodeURIComponent(email)}`, request)
 
   return {
     subject: `Your ${SITE.name} trainer setup is ready`,
@@ -181,7 +184,12 @@ export async function POST(req: NextRequest) {
 
     if (process.env.RESEND_API_KEY) {
       try {
-        const emailData = trainerWelcomeEmail(fullName, email, shouldSendPassword ? tempPassword : undefined)
+        const emailData = trainerWelcomeEmail(
+          fullName,
+          email,
+          req,
+          shouldSendPassword ? tempPassword : undefined
+        )
         await sendEmail({ to: email, ...emailData })
         emailedCredentials = true
       } catch (emailError) {

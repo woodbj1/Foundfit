@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { getAppUrl } from '@/lib/app-url'
 import { createClient } from '@/lib/supabase/server'
 import { getStripe } from '@/lib/stripe'
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   const stripe = getStripe()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -13,7 +14,7 @@ export async function POST() {
     return NextResponse.json({ error: 'No billing account found. Purchase a package first.' }, { status: 404 })
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+  const appUrl = getAppUrl(request)
 
   const session = await stripe.billingPortal.sessions.create({
     customer: customers.data[0].id,

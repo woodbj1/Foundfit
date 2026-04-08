@@ -1,6 +1,12 @@
 [build]
 command = "npm run build"
-publish = ".next"
 
 [build.environment]
 NODE_VERSION = "24"
+NPM_FLAGS = "--include=dev"
+
+[context.staging.environment]
+NEXT_PUBLIC_APP_URL = "https://staging--foundfit.netlify.app"
+
+[[plugins]]
+package = "@netlify/plugin-nextjs"
