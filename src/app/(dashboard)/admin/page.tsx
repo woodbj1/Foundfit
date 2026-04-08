@@ -27,6 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import CarouselManagement from '@/components/admin/carousel-management'
 import { getAdminDashboardData } from '@/lib/admin-reporting'
 import { formatPrice } from '@/lib/stripe'
 import { createClient } from '@/lib/supabase/server'
@@ -578,7 +579,8 @@ export default async function AdminDashboardPage({
           </CardContent>
         </Card>
       </div>
+
+      <CarouselManagement />
     </div>
   )
 }
-

@@ -5,17 +5,11 @@ import { startTransition, useEffect, useEffectEvent, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import type { MarketingCarouselSlide } from '@/lib/public-marketing'
 import { cn } from '@/lib/utils'
 
-export type HeroCarouselSlide = {
-  src: string
-  alt: string
-  eyebrow: string
-  caption: string
-}
-
 type HeroCarouselProps = {
-  slides: HeroCarouselSlide[]
+  slides: MarketingCarouselSlide[]
 }
 
 export default function HeroCarousel({ slides }: HeroCarouselProps) {
