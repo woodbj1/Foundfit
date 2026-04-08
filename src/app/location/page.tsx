@@ -51,9 +51,9 @@ export default function LocationPage() {
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-cyan-50 flex flex-col">
       <nav className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
+          <div className="flex justify-between items-center h-20 sm:h-24">
             <Link href="/" className="flex items-center gap-2">
-              <BrandLogo imageClassName="h-20 w-auto max-w-[120px]" priority />
+              <BrandLogo imageClassName="h-16 w-auto max-w-[100px] sm:h-24 sm:max-w-[150px]" priority />
             </Link>
             <div className="flex gap-3">
               <Link href="/login">
