@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { getTrainerCalendarBusySlots } from '@/lib/google-calendar'
 import { addDays, addMinutes, areIntervalsOverlapping, format } from 'date-fns'
 import { sortScheduleRules } from '@/lib/trainer-schedule'
@@ -26,10 +26,11 @@ export async function GET(request: NextRequest) {
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  const admin = await createAdminClient()
 
   const dayOfWeek = getDayOfWeekFromDateString(dateStr)
 
-  const { data: bookingWindowSetting } = await supabase
+  const { data: bookingWindowSetting } = await admin
     .from('settings')
     .select('key, value')
     .in('key', ['default_duration', 'booking_window_days'])
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
   let duration = parseInt(defaultDurationSetting?.value || '50', 10)
 
   if (serviceId) {
-    const { data: service } = await supabase
+    const { data: service } = await admin
       .from('services')
       .select('duration_minutes')
       .eq('id', serviceId)
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
   // Find a trainer. If one isn't specified, use the first active trainer.
   let targetTrainerId = trainerId
   if (!targetTrainerId) {
-    const { data: firstTrainer } = await supabase
+    const { data: firstTrainer } = await admin
       .from('trainers')
       .select('id')
       .eq('is_active', true)
@@ -84,22 +85,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ slots: [] })
   }
 
-  const { data: targetTrainer } = await supabase
+  const { data: targetTrainer } = await admin
     .from('trainers')
-    .select('id, onboarding_completed_at, profile:profiles!trainers_user_id_fkey(timezone)')
+    .select('id, onboarding_completed_at, profile:profiles!trainers_user_id_fkey(full_name, timezone)')
     .eq('id', targetTrainerId)
     .maybeSingle()
 
   if (!targetTrainer?.onboarding_completed_at) {
-    return NextResponse.json({ slots: [], trainer_id: targetTrainerId })
+    return NextResponse.json({
+      slots: [],
+      trainer_id: targetTrainerId,
+      message: 'This trainer is still finishing setup and is not bookable yet.',
+    })
   }
 
   const trainerProfile = Array.isArray(targetTrainer.profile)
     ? targetTrainer.profile[0]
     : targetTrainer.profile
+  const trainerName = trainerProfile?.full_name || 'This trainer'
   const trainerTimezone = trainerProfile?.timezone || 'America/New_York'
 
-  const { data: scheduleRulesData, error: scheduleRulesError } = await supabase
+  const { data: scheduleRulesData, error: scheduleRulesError } = await admin
     .from('trainer_schedule_rules')
     .select('day_of_week, start_time, end_time, rule_type')
     .eq('trainer_id', targetTrainerId)
@@ -109,7 +115,7 @@ export async function GET(request: NextRequest) {
   let scheduleRules = (scheduleRulesData as TrainerScheduleRule[] | null) ?? []
 
   if (scheduleRulesError || scheduleRules.length === 0) {
-    const { data: legacyBlocks } = await supabase
+    const { data: legacyBlocks } = await admin
       .from('availability_blocks')
       .select('day_of_week, start_time, end_time')
       .eq('trainer_id', targetTrainerId)
@@ -133,13 +139,17 @@ export async function GET(request: NextRequest) {
   )
 
   if (workHours.length === 0) {
-    return NextResponse.json({ slots: [] })
+    return NextResponse.json({
+      slots: [],
+      trainer_id: targetTrainerId,
+      message: `${trainerName} has not set work hours yet. Ask your trainer to add availability in the trainer dashboard.`,
+    })
   }
 
   // Get existing bookings for this day
   const { start: dayStart, end: dayEnd } = getUtcRangeForDateInTimeZone(dateStr, trainerTimezone)
 
-  const { data: existingBookings } = await supabase
+  const { data: existingBookings } = await admin
     .from('bookings')
     .select('start_time, end_time')
     .eq('trainer_id', targetTrainerId)
@@ -221,5 +231,13 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ slots: allSlots, trainer_id: targetTrainerId })
+  if (allSlots.length === 0) {
+    return NextResponse.json({
+      slots: [],
+      trainer_id: targetTrainerId,
+      message: `${trainerName} has no open times on this date. Try another day.`,
+    })
+  }
+
+  return NextResponse.json({ slots: allSlots, trainer_id: targetTrainerId, message: null })
 }

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 import { sendEmail, bookingRequestEmail, bookingApprovedEmail } from '@/lib/email'
 import { createTrainerCalendarEvent } from '@/lib/google-calendar'
-import { format, startOfWeek, endOfWeek } from 'date-fns'
+import { areIntervalsOverlapping, endOfWeek, format, startOfWeek } from 'date-fns'
 import { createDailyRoomForBooking, isDailyConfigured } from '@/lib/daily'
 import { isVirtualService } from '@/lib/product-access'
 import type { Booking, Service, SessionPack, Subscription } from '@/lib/types'
+import { getCurrentDateInTimeZone } from '@/lib/timezone'
 
 type SubscriptionWithService = Subscription & { service?: Service | null }
 
@@ -35,6 +36,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
+  const admin = await createAdminClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -64,18 +66,19 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Get default duration
-  const { data: durationSetting } = await supabase
+  const { data: bookingSettings } = await supabase
     .from('settings')
-    .select('value')
-    .eq('key', 'default_duration')
-    .single()
-  const duration = service.duration_minutes || parseInt(durationSetting?.value || '50')
+    .select('key, value')
+    .in('key', ['default_duration', 'booking_window_days'])
 
-  // Find trainer
+  const defaultDurationSetting = bookingSettings?.find((setting) => setting.key === 'default_duration')
+  const bookingWindowSetting = bookingSettings?.find((setting) => setting.key === 'booking_window_days')
+  const duration = service.duration_minutes || parseInt(defaultDurationSetting?.value || '50', 10)
+  const bookingWindowDays = Math.max(parseInt(bookingWindowSetting?.value || '14', 10) || 14, 1)
+
   let targetTrainerId = trainer_id
   if (!targetTrainerId) {
-    const { data: firstTrainer } = await supabase
+    const { data: firstTrainer } = await admin
       .from('trainers')
       .select('id')
       .eq('is_active', true)
@@ -88,20 +91,23 @@ export async function POST(request: NextRequest) {
     targetTrainerId = firstTrainer.id
   }
 
-  // Check if client has available sessions
   const hasAccess = await checkClientAccess(supabase, user.id, service.id, start_time)
   if (!hasAccess.allowed) {
     return NextResponse.json({ error: hasAccess.reason }, { status: 400 })
   }
 
-  const { data: trainerRecord } = await supabase
-    .from('trainers')
-    .select('id, user_id, onboarding_completed_at')
-    .eq('id', targetTrainerId)
-    .single()
+  const { data: trainerRecord } = await admin
+      .from('trainers')
+      .select('id, user_id, is_active, onboarding_completed_at')
+      .eq('id', targetTrainerId)
+      .single()
 
   if (!trainerRecord) {
     return NextResponse.json({ error: 'Trainer not found' }, { status: 404 })
+  }
+
+  if (!trainerRecord.is_active) {
+    return NextResponse.json({ error: 'This trainer is not accepting bookings right now.' }, { status: 400 })
   }
 
   if (!trainerRecord.onboarding_completed_at) {
@@ -111,7 +117,27 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const { data: trainerProfile } = await supabase
+  const startDate = new Date(start_time)
+  if (Number.isNaN(startDate.getTime())) {
+    return NextResponse.json({ error: 'Invalid start_time' }, { status: 400 })
+  }
+
+  if (startDate <= new Date()) {
+    return NextResponse.json({ error: 'Bookings must be scheduled in the future.' }, { status: 400 })
+  }
+
+  const startDateString = startDate.toISOString().slice(0, 10)
+  const currentBookingDate = getCurrentDateInTimeZone('America/New_York')
+  const lastBookableDate = addDaysUtc(currentBookingDate, bookingWindowDays - 1)
+
+  if (startDateString < currentBookingDate || startDateString > lastBookableDate) {
+    return NextResponse.json(
+      { error: `Bookings can only be made through ${lastBookableDate}.` },
+      { status: 400 }
+    )
+  }
+
+  const { data: trainerProfile } = await admin
     .from('profiles')
     .select('booking_preference, timezone')
     .eq('id', trainerRecord.user_id)
@@ -120,11 +146,30 @@ export async function POST(request: NextRequest) {
   const shouldAutoApprove = trainerProfile?.booking_preference === 'instant_confirmation'
   const trainerTimezone = trainerProfile?.timezone || 'America/New_York'
 
-  // Calculate end time
-  const startDate = new Date(start_time)
   const endDate = new Date(startDate.getTime() + duration * 60000)
 
-  // Create booking
+  const { data: conflictingBookings } = await admin
+    .from('bookings')
+    .select('id, start_time, end_time')
+    .eq('trainer_id', targetTrainerId)
+    .in('status', ['pending', 'approved'])
+    .lt('start_time', endDate.toISOString())
+    .gt('end_time', startDate.toISOString())
+
+  const hasConflict = (conflictingBookings ?? []).some((booking) =>
+    areIntervalsOverlapping(
+      { start: startDate, end: endDate },
+      { start: new Date(booking.start_time), end: new Date(booking.end_time) }
+    )
+  )
+
+  if (hasConflict) {
+    return NextResponse.json(
+      { error: 'That time was just booked. Please choose another slot.' },
+      { status: 409 }
+    )
+  }
+
   const { data: booking, error } = await supabase
     .from('bookings')
     .insert({
@@ -146,13 +191,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { data: trainer } = await supabase
+    const { data: trainer } = await admin
       .from('trainers')
       .select('*, profile:profiles!trainers_user_id_fkey(*)')
       .eq('id', targetTrainerId)
       .single()
 
-    const { data: clientProfile } = await supabase
+    const { data: clientProfile } = await admin
       .from('profiles')
       .select('full_name, email')
       .eq('id', user.id)
@@ -275,7 +320,6 @@ async function checkClientAccess(
   serviceId: string,
   startTime: string
 ): Promise<{ allowed: boolean; reason?: string }> {
-  // Check for active session subscription for this service
   const { data: subscription } = await supabase
     .from('subscriptions')
     .select('*, service:services(*)')
@@ -288,7 +332,6 @@ async function checkClientAccess(
   const normalizedSubscription = subscription as SubscriptionWithService | null
 
   if (normalizedSubscription) {
-    // Check weekly booking limit
     const maxWeekly = normalizedSubscription.service?.max_weekly_bookings || 3
     const weekStart = startOfWeek(new Date(startTime))
     const weekEnd = endOfWeek(new Date(startTime))
@@ -308,7 +351,6 @@ async function checkClientAccess(
     return { allowed: true }
   }
 
-  // Check for session packs with remaining sessions
   const { data: packs } = await supabase
     .from('session_packs')
     .select('*')
@@ -328,6 +370,12 @@ async function checkClientAccess(
     allowed: false,
     reason: 'No active subscription or available sessions. Please purchase a package first.',
   }
+}
+
+function addDaysUtc(date: string, days: number) {
+  const next = new Date(`${date}T00:00:00Z`)
+  next.setUTCDate(next.getUTCDate() + days)
+  return next.toISOString().slice(0, 10)
 }
 
 function buildBookingCalendarDescription({

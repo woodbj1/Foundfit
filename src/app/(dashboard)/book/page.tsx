@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient, createClient } from '@/lib/supabase/server'
 import BookingFlow from '@/components/bookings/booking-flow'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,8 @@ import { AlertCircle, ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
 import type { Profile } from '@/lib/types'
 import { getBookableServiceOptions, getTotalRemainingSessions } from '@/lib/product-access'
+
+const DEFAULT_BOOKING_WINDOW_DAYS = 14
 
 interface BookingTrainer {
   id: string
@@ -19,6 +21,7 @@ interface BookingTrainer {
 
 export default async function BookPage() {
   const supabase = await createClient()
+  const admin = await createAdminClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
@@ -32,7 +35,7 @@ export default async function BookPage() {
   // Check for active session packs
   const { data: packs } = await supabase
     .from('session_packs')
-    .select('id, service_id, total_sessions, used_sessions, service:services(*)')
+    .select('id, service_id, total_sessions, used_sessions, expires_at, service:services(*)')
     .eq('client_id', user.id)
 
   const normalizedSubscriptions = (subscriptions ?? []).map((subscription) => ({
@@ -50,11 +53,12 @@ export default async function BookPage() {
   const hasActiveAccess = bookableServices.length > 0
 
   // Get active trainers
-  const { data: trainers } = await supabase
+  const { data: trainers } = await admin
     .from('trainers')
     .select('id, user_id, bio, is_active, onboarding_completed_at, profile:profiles!trainers_user_id_fkey(id, full_name, avatar_url)')
     .eq('is_active', true)
     .not('onboarding_completed_at', 'is', null)
+  const hasAvailableTrainers = (trainers?.length ?? 0) > 0
 
   // Get travel fee
   const { data: travelFeeSetting } = await supabase
@@ -62,7 +66,20 @@ export default async function BookPage() {
     .select('value')
     .eq('key', 'travel_fee')
     .single()
-  const travelFee = parseInt(travelFeeSetting?.value || '0')
+  const travelFee = parseInt(travelFeeSetting?.value || '0', 10)
+
+  const { data: bookingWindowSetting } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'booking_window_days')
+    .single()
+  const parsedBookingWindowDays = parseInt(
+    bookingWindowSetting?.value || String(DEFAULT_BOOKING_WINDOW_DAYS),
+    10
+  )
+  const bookingWindowDays = Number.isFinite(parsedBookingWindowDays) && parsedBookingWindowDays > 0
+    ? parsedBookingWindowDays
+    : DEFAULT_BOOKING_WINDOW_DAYS
 
   if (!hasActiveAccess) {
     return (
@@ -85,6 +102,41 @@ export default async function BookPage() {
                   Browse Packages
                 </Button>
               </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (!hasAvailableTrainers) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold">Book a Session</h1>
+          <p className="text-muted-foreground mt-1">Choose a date and time that works for you</p>
+        </div>
+        <Card className="border-amber-200 bg-amber-50 max-w-lg">
+          <CardContent className="pt-6 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold text-amber-900">No trainers available yet</p>
+              <p className="text-sm text-amber-700 mt-1">
+                Your package is active, but no trainers are currently bookable. Finish trainer onboarding or reactivate a trainer in the admin dashboard to reopen booking.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link href="/account">
+                  <Button size="sm" variant="outline" className="gap-2 border-amber-300 text-amber-900 hover:bg-amber-100">
+                    <ShoppingCart className="h-4 w-4" />
+                    View Packages
+                  </Button>
+                </Link>
+                <Link href="/dashboard">
+                  <Button size="sm" className="gap-2 bg-amber-600 hover:bg-amber-700 text-white">
+                    Back to Dashboard
+                  </Button>
+                </Link>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -115,6 +167,7 @@ export default async function BookPage() {
           profile: Array.isArray(trainer.profile) ? trainer.profile[0] : trainer.profile,
         })) as BookingTrainer[]}
         travelFee={travelFee}
+        bookingWindowDays={bookingWindowDays}
         bookableServices={bookableServices}
       />
     </div>

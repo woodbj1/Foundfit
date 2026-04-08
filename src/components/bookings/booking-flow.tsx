@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { format } from 'date-fns'
+import { addDays, format, startOfDay } from 'date-fns'
 import { toast } from 'sonner'
 import {
   Building2,
@@ -10,7 +10,6 @@ import {
   Library,
   Loader2,
   MapPin,
-  User,
   Video,
 } from 'lucide-react'
 
@@ -36,10 +35,16 @@ interface BookingTrainer {
 interface Props {
   trainers: BookingTrainer[]
   travelFee: number
+  bookingWindowDays: number
   bookableServices: BookableServiceOption[]
 }
 
-export default function BookingFlow({ trainers, travelFee, bookableServices }: Props) {
+export default function BookingFlow({
+  trainers,
+  travelFee,
+  bookingWindowDays,
+  bookableServices,
+}: Props) {
   const router = useRouter()
   const [selectedService, setSelectedService] = useState<BookableServiceOption | null>(
     bookableServices.length === 1 ? bookableServices[0] : null
@@ -49,6 +54,7 @@ export default function BookingFlow({ trainers, travelFee, bookableServices }: P
   )
   const [date, setDate] = useState<Date | undefined>(undefined)
   const [slots, setSlots] = useState<TimeSlot[]>([])
+  const [slotsMessage, setSlotsMessage] = useState<string | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null)
   const [locationType, setLocationType] = useState<LocationType>('gym')
   const [travelAddress, setTravelAddress] = useState('')
@@ -67,6 +73,7 @@ export default function BookingFlow({ trainers, travelFee, bookableServices }: P
       setSlotsLoading(true)
       setSelectedSlot(null)
       setSlots([])
+      setSlotsMessage(null)
 
       try {
         const params = new URLSearchParams({
@@ -78,6 +85,7 @@ export default function BookingFlow({ trainers, travelFee, bookableServices }: P
         const data = await res.json()
         if (data.slots) {
           setSlots(data.slots)
+          setSlotsMessage(data.message || null)
         }
       } catch {
         toast.error('Failed to load available slots')
@@ -130,6 +138,7 @@ export default function BookingFlow({ trainers, travelFee, bookableServices }: P
 
   const virtualBooking = selectedService ? isVirtualService(selectedService.service) : false
   const selectedServiceSessionsLeft = selectedService?.remainingSessions ?? 0
+  const showTrainerStep = trainers.length > 0
 
   return (
     <div className="space-y-6">
@@ -218,7 +227,7 @@ export default function BookingFlow({ trainers, travelFee, bookableServices }: P
         </div>
       )}
 
-      {selectedService && trainers.length > 1 && (
+      {selectedService && showTrainerStep && (
         <div>
           <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">
@@ -265,15 +274,6 @@ export default function BookingFlow({ trainers, travelFee, bookableServices }: P
         </div>
       )}
 
-      {selectedService && trainers.length === 1 && selectedTrainer && (
-        <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg w-fit">
-          <User className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">
-            {selectedTrainer.profile?.full_name ?? 'Your Trainer'}
-          </span>
-        </div>
-      )}
-
       {trainers.length === 0 && (
         <p className="text-muted-foreground text-sm">No trainers are currently available.</p>
       )}
@@ -285,18 +285,27 @@ export default function BookingFlow({ trainers, travelFee, bookableServices }: P
               <CardTitle className="text-base flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold shrink-0">
                   {bookableServices.length > 1
-                    ? trainers.length > 1 ? '3' : '2'
-                    : trainers.length > 1 ? '2' : '1'}
+                    ? showTrainerStep ? '3' : '2'
+                    : showTrainerStep ? '2' : '1'}
                 </span>
                 Select Date
               </CardTitle>
             </CardHeader>
             <CardContent>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Booking opens through {format(addDays(new Date(), bookingWindowDays - 1), 'MMMM d, yyyy')}.
+              </p>
               <Calendar
                 mode="single"
                 selected={date}
                 onSelect={setDate}
-                disabled={(day) => day < new Date() || day.getDay() === 0}
+                disabled={(day) => {
+                  const dayStart = startOfDay(day)
+                  const todayStart = startOfDay(new Date())
+                  const lastBookableDay = startOfDay(addDays(todayStart, bookingWindowDays - 1))
+
+                  return dayStart < todayStart || dayStart > lastBookableDay || day.getDay() === 0
+                }}
                 className="rounded-md"
               />
             </CardContent>
@@ -307,8 +316,8 @@ export default function BookingFlow({ trainers, travelFee, bookableServices }: P
               <CardTitle className="text-base flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold shrink-0">
                   {bookableServices.length > 1
-                    ? trainers.length > 1 ? '4' : '3'
-                    : trainers.length > 1 ? '3' : '2'}
+                    ? showTrainerStep ? '4' : '3'
+                    : showTrainerStep ? '3' : '2'}
                 </span>
                 Available Times
               </CardTitle>
@@ -327,7 +336,7 @@ export default function BookingFlow({ trainers, travelFee, bookableServices }: P
                 </div>
               ) : slots.length === 0 ? (
                 <p className="text-muted-foreground text-sm text-center py-8">
-                  No available slots for this date
+                  {slotsMessage || 'No available slots for this date'}
                 </p>
               ) : (
                 <div className="grid grid-cols-2 gap-2 max-h-80 overflow-y-auto">
@@ -356,8 +365,8 @@ export default function BookingFlow({ trainers, travelFee, bookableServices }: P
               <CardTitle className="text-base flex items-center gap-2">
                 <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold shrink-0">
                   {bookableServices.length > 1
-                    ? trainers.length > 1 ? '5' : '4'
-                    : trainers.length > 1 ? '4' : '3'}
+                    ? showTrainerStep ? '5' : '4'
+                    : showTrainerStep ? '4' : '3'}
                 </span>
                 Session Details
               </CardTitle>
