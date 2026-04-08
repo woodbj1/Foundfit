@@ -29,10 +29,11 @@ interface NavItem {
   label: string
   href: string
   icon: React.ComponentType<{ className?: string }>
+  match?: 'exact' | 'section'
 }
 
 const clientNav: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, match: 'exact' },
   { label: 'Book Session', href: '/book', icon: Calendar },
   { label: 'My Sessions', href: '/sessions', icon: Clock },
   { label: 'Meal Plans', href: '/meal-plans', icon: UtensilsCrossed },
@@ -40,7 +41,7 @@ const clientNav: NavItem[] = [
 ]
 
 const trainerNav: NavItem[] = [
-  { label: 'Dashboard', href: '/trainer', icon: LayoutDashboard },
+  { label: 'Dashboard', href: '/trainer', icon: LayoutDashboard, match: 'exact' },
   { label: 'Availability', href: '/trainer/availability', icon: Clock },
   { label: 'Bookings', href: '/trainer/bookings', icon: Calendar },
   { label: 'Earnings', href: '/trainer/earnings', icon: DollarSign },
@@ -49,7 +50,7 @@ const trainerNav: NavItem[] = [
 ]
 
 const adminNav: NavItem[] = [
-  { label: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+  { label: 'Dashboard', href: '/admin', icon: LayoutDashboard, match: 'exact' },
   { label: 'Services', href: '/admin/services', icon: Package },
   { label: 'Trainers', href: '/admin/trainers', icon: ShieldCheck },
   { label: 'Clients', href: '/admin/clients', icon: Users },
@@ -72,7 +73,10 @@ function NavLinks({ items, pathname, onClick }: { items: NavItem[]; pathname: st
   return (
     <nav className="flex flex-col gap-1">
       {items.map((item) => {
-        const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+        const isActive =
+          item.match === 'exact'
+            ? pathname === item.href
+            : pathname === item.href || pathname.startsWith(item.href + '/')
         return (
           <Link
             key={item.href}
