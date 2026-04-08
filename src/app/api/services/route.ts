@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getStripe } from '@/lib/stripe'
+
+function revalidatePublicCatalog() {
+  revalidatePath('/')
+}
 
 function deriveServiceType(category?: string, isSession?: boolean, sessionLimit?: number | null) {
   if (category === 'meal_plan') return 'meal_plan'
@@ -169,6 +174,8 @@ export async function POST(req: NextRequest) {
 
     if (error) throw error
 
+    revalidatePublicCatalog()
+
     return NextResponse.json({ data })
   } catch (error: unknown) {
     console.error('[POST /api/services]', error)
@@ -290,6 +297,8 @@ export async function PUT(req: NextRequest) {
 
     if (error) throw error
 
+    revalidatePublicCatalog()
+
     return NextResponse.json({ data })
   } catch (error: unknown) {
     console.error('[PUT /api/services]', error)
@@ -325,6 +334,8 @@ export async function DELETE(req: NextRequest) {
 
     const { error } = await supabase.from('services').update({ is_active: false }).eq('id', id)
     if (error) throw error
+
+    revalidatePublicCatalog()
 
     return NextResponse.json({ success: true })
   } catch (error: unknown) {

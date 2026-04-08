@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { DEFAULT_SERVICES } from '@/lib/default-services'
 
@@ -40,6 +41,8 @@ export async function POST() {
         results.push({ name: service.name, action: 'created' })
       }
     }
+
+    revalidatePath('/')
 
     return NextResponse.json({ success: true, data: results })
   } catch (error: unknown) {
