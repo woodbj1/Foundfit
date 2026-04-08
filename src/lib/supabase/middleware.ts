@@ -31,6 +31,10 @@ function isPublicPath(pathname: string) {
     return true
   }
 
+  if (pathname.startsWith('/api/public/')) {
+    return true
+  }
+
   return false
 }
 
