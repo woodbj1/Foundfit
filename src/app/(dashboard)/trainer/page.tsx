@@ -427,6 +427,21 @@ export default function TrainerDashboardPage() {
         <div className="flex flex-wrap items-center gap-3">
           <Button
             variant="outline"
+            onClick={handleConnectGoogle}
+            className="gap-2"
+            disabled={!trainer || connectingGoogle}
+          >
+            {connectingGoogle ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Calendar className="h-4 w-4" />
+            )}
+            {calendarStatus === 'connected' || calendarStatus === 'reconnect_required'
+              ? 'Reconnect Calendar'
+              : 'Connect Calendar'}
+          </Button>
+          <Button
+            variant="outline"
             onClick={() => router.push('/trainer/availability')}
             className="gap-2"
             disabled={!trainer}
