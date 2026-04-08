@@ -38,12 +38,7 @@ type AccountSubscription = Subscription & { service?: Service | null }
 type AccountSessionPack = SessionPack & { service?: Service | null }
 type TrainerOption = {
   id: string
-  profile?: { full_name: string | null } | null
-}
-type TrainerQueryRow = {
-  id: string
-  onboarding_completed_at: string | null
-  profile?: { full_name: string | null }[] | { full_name: string | null } | null
+  full_name: string
 }
 
 export default function AccountPage() {
@@ -79,11 +74,13 @@ export default function AccountPage() {
           .select('*, service:services(*)')
           .eq('client_id', user.id)
           .order('purchased_at', { ascending: false }),
-        supabase
-          .from('trainers')
-          .select('id, onboarding_completed_at, profile:profiles!trainers_user_id_fkey(full_name)')
-          .eq('is_active', true)
-          .not('onboarding_completed_at', 'is', null),
+        fetch('/api/trainers/available', { cache: 'no-store' }).then(async (response) => {
+          if (!response.ok) {
+            throw new Error('Could not load trainers.')
+          }
+
+          return response.json() as Promise<{ data?: TrainerOption[] }>
+        }),
       ])
 
       if (profileRes.data) {
@@ -110,19 +107,19 @@ export default function AccountPage() {
         )
       }
       if (trainersRes.data) {
-        const normalizedTrainers = (trainersRes.data as TrainerQueryRow[]).map((trainer) => ({
-          ...trainer,
-          profile: Array.isArray(trainer.profile) ? trainer.profile[0] : trainer.profile,
-        }))
-        setTrainers(normalizedTrainers)
-        if (normalizedTrainers.length === 1) {
-          setSelectedTrainerId(normalizedTrainers[0].id)
+        setTrainers(trainersRes.data)
+        if (trainersRes.data.length === 1) {
+          setSelectedTrainerId(trainersRes.data[0].id)
         }
       }
       setLoading(false)
     }
 
-    load()
+    load().catch((error: unknown) => {
+      console.error('Error loading account data:', error)
+      toast.error(error instanceof Error ? error.message : 'Failed to load account data.')
+      setLoading(false)
+    })
   }, [supabase])
 
   async function handleSaveProfile() {
@@ -329,14 +326,14 @@ export default function AccountPage() {
                       <SelectContent>
                         {trainers.map((trainer) => (
                           <SelectItem key={trainer.id} value={trainer.id}>
-                            {trainer.profile?.full_name || 'Trainer'}
+                            {trainer.full_name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
                       Live training and meal plan purchases will be assigned to{' '}
-                      <strong>{selectedTrainer?.profile?.full_name || 'your selected trainer'}</strong>
+                      <strong>{selectedTrainer?.full_name || 'your selected trainer'}</strong>
                       {' '}for scheduling, client history, and earnings.
                     </p>
                   </>
