@@ -5,11 +5,12 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import {
-  DEFAULT_SITE_LOGO_SRC,
   MARKETING_ASSETS_BUCKET,
-  SITE_LOGO_SETTING_KEY,
-  getConfiguredSiteLogoPath,
-  getConfiguredSiteLogoPublicUrl,
+  getConfiguredLogoPath,
+  getResolvedLogoState,
+  getSiteLogoVariantConfig,
+  getSiteLogoVariants,
+  normalizeSiteLogoVariant,
 } from '@/lib/site-branding'
 
 const MAX_FILE_SIZE_BYTES = 6 * 1024 * 1024
@@ -49,20 +50,22 @@ async function requireAdmin() {
   return { admin: createServiceRoleClient() }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const auth = await requireAdmin()
   if (auth.error) return auth.error
 
-  const currentPath = await getConfiguredSiteLogoPath()
-  const publicUrl = await getConfiguredSiteLogoPublicUrl()
+  const singleVariant = request.nextUrl.searchParams.get('variant')
 
-  return NextResponse.json({
-    logo: {
-      image_path: currentPath,
-      public_url: publicUrl || DEFAULT_SITE_LOGO_SRC,
-      is_custom: Boolean(currentPath),
-    },
-  })
+  if (singleVariant) {
+    const variant = normalizeSiteLogoVariant(singleVariant)
+    return NextResponse.json({
+      logo: await getResolvedLogoState(variant),
+    })
+  }
+
+  const logos = await Promise.all(getSiteLogoVariants().map((variant) => getResolvedLogoState(variant)))
+
+  return NextResponse.json({ logos })
 }
 
 export async function POST(request: NextRequest) {
@@ -71,6 +74,7 @@ export async function POST(request: NextRequest) {
 
   const formData = await request.formData()
   const image = formData.get('image')
+  const variant = normalizeSiteLogoVariant(formData.get('variant')?.toString() ?? null)
 
   if (!(image instanceof File)) {
     return NextResponse.json({ error: 'A logo image file is required.' }, { status: 400 })
@@ -84,11 +88,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Logo images must be 6MB or smaller.' }, { status: 400 })
   }
 
-  const previousPath = await getConfiguredSiteLogoPath()
+  const previousPath = await getConfiguredLogoPath(variant)
   const extension = image.name.includes('.')
     ? image.name.split('.').pop()?.toLowerCase() || 'png'
     : image.type.split('/')[1] || 'png'
-  const imagePath = `branding/site-logo-${Date.now()}-${randomUUID()}.${extension}`
+  const imagePath = `branding/${variant}-logo-${Date.now()}-${randomUUID()}.${extension}`
   const buffer = Buffer.from(await image.arrayBuffer())
 
   const uploadResult = await auth.admin.storage
@@ -102,9 +106,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: uploadResult.error.message }, { status: 500 })
   }
 
+  const { settingKey } = getSiteLogoVariantConfig(variant)
   const { error: settingError } = await auth.admin
     .from('settings')
-    .upsert({ key: SITE_LOGO_SETTING_KEY, value: imagePath }, { onConflict: 'key' })
+    .upsert({ key: settingKey, value: imagePath }, { onConflict: 'key' })
 
   if (settingError) {
     await auth.admin.storage.from(MARKETING_ASSETS_BUCKET).remove([imagePath])
@@ -117,26 +122,23 @@ export async function POST(request: NextRequest) {
 
   revalidateBrandingPages()
 
-  const { data } = auth.admin.storage.from(MARKETING_ASSETS_BUCKET).getPublicUrl(imagePath)
   return NextResponse.json({
-    logo: {
-      image_path: imagePath,
-      public_url: data.publicUrl,
-      is_custom: true,
-    },
+    logo: await getResolvedLogoState(variant),
   })
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   const auth = await requireAdmin()
   if (auth.error) return auth.error
 
-  const currentPath = await getConfiguredSiteLogoPath()
+  const variant = normalizeSiteLogoVariant(request.nextUrl.searchParams.get('variant'))
+  const currentPath = await getConfiguredLogoPath(variant)
+  const { settingKey } = getSiteLogoVariantConfig(variant)
 
   const { error: deleteSettingError } = await auth.admin
     .from('settings')
     .delete()
-    .eq('key', SITE_LOGO_SETTING_KEY)
+    .eq('key', settingKey)
 
   if (deleteSettingError) {
     return NextResponse.json({ error: deleteSettingError.message }, { status: 500 })
@@ -149,10 +151,6 @@ export async function DELETE() {
   revalidateBrandingPages()
 
   return NextResponse.json({
-    logo: {
-      image_path: null,
-      public_url: DEFAULT_SITE_LOGO_SRC,
-      is_custom: false,
-    },
+    logo: await getResolvedLogoState(variant),
   })
 }

@@ -145,7 +145,11 @@ export default async function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20 sm:h-24">
             <Link href="/" className="flex items-center gap-2">
-              <BrandLogo imageClassName="h-16 w-auto max-w-[100px] sm:h-24 sm:max-w-[150px]" priority />
+              <BrandLogo
+                variant="header"
+                imageClassName="h-12 w-auto max-w-[280px] sm:h-14 sm:max-w-[360px] lg:h-16 lg:max-w-[420px]"
+                priority
+              />
             </Link>
             <div className="flex items-center gap-3">
               <Link href="/location">

@@ -73,7 +73,7 @@ function getEmailHomeUrl() {
 }
 
 function getLogoUrl() {
-  return new URL('/brand/email-logo-white.png', getEmailAssetBaseUrl()).toString()
+  return new URL('/api/public/branding/logo?variant=email', getEmailAssetBaseUrl()).toString()
 }
 
 function getTrainerBookingsLink(options?: {
