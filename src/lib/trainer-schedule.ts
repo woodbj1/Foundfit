@@ -6,7 +6,8 @@ export type DayPreset = 'all' | 'weekdays' | 'weekends' | 'custom'
 const TIME_SLOT_LABELS = new Map(TIME_SLOTS.map((slot) => [slot.value, slot.label]))
 
 export function formatScheduleTime(value: string) {
-  return TIME_SLOT_LABELS.get(value) || value
+  const normalizedValue = value.length >= 5 ? value.slice(0, 5) : value
+  return TIME_SLOT_LABELS.get(normalizedValue) || normalizedValue
 }
 
 export function sortScheduleRules<T extends Pick<TrainerScheduleRule, 'day_of_week' | 'start_time' | 'end_time'>>(
