@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import BillingPortalButton from '@/components/nav/billing-portal-button'
 import CheckoutButton from '@/components/payments/checkout-button'
 import { createClient } from '@/lib/supabase/client'
 import { formatPrice } from '@/lib/stripe'
@@ -120,6 +121,7 @@ export default function AccountPage() {
   const libraryPacks = getActiveLibraryPacks(packs)
   const primarySessionSubscription = getPrimarySessionSubscription(subscriptions)
   const activePacks = getActiveSessionPacks(packs)
+  const hasBillingHistory = subscriptions.length > 0 || packs.length > 0
 
   if (loading) {
     return (
@@ -169,11 +171,12 @@ export default function AccountPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
             <CardTitle className="flex items-center gap-2">
               <CreditCard className="h-5 w-5" />
               Current Products
             </CardTitle>
+            {hasBillingHistory ? <BillingPortalButton /> : null}
           </CardHeader>
           <CardContent>
             {primarySessionSubscription ? (
