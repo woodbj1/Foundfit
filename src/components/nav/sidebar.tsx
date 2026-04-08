@@ -51,6 +51,7 @@ const trainerNav: NavItem[] = [
 
 const adminNav: NavItem[] = [
   { label: 'Dashboard', href: '/admin', icon: LayoutDashboard, match: 'exact' },
+  { label: 'Earnings', href: '/admin/earnings', icon: DollarSign },
   { label: 'Services', href: '/admin/services', icon: Package },
   { label: 'Trainers', href: '/admin/trainers', icon: ShieldCheck },
   { label: 'Clients', href: '/admin/clients', icon: Users },
@@ -61,7 +62,7 @@ const adminNav: NavItem[] = [
 function getNavItems(role: UserRole): NavItem[] {
   switch (role) {
     case 'admin':
-      return [...adminNav, ...trainerNav.filter(i => !adminNav.some(a => a.label === i.label))]
+      return adminNav
     case 'trainer':
       return trainerNav
     default:
