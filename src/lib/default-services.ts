@@ -20,7 +20,7 @@ export const DEFAULT_SERVICES: DefaultServiceSeed[] = [
   {
     name: 'Unlimited Monthly',
     title: 'Unlimited Monthly',
-    description: 'Unlimited training sessions per month. Up to 3 sessions per week.',
+    description: 'Unlimited training sessions per month with studio, in-home, or virtual booking options. Up to 3 sessions per week.',
     category: 'subscription',
     type: 'unlimited',
     price: 29900,
@@ -37,7 +37,7 @@ export const DEFAULT_SERVICES: DefaultServiceSeed[] = [
   {
     name: 'Single Session',
     title: 'Single Session',
-    description: 'One personal training session.',
+    description: 'One personal training session. Book it in studio, at home, or virtually.',
     category: 'session',
     type: 'single',
     price: 7500,
@@ -71,7 +71,7 @@ export const DEFAULT_SERVICES: DefaultServiceSeed[] = [
   {
     name: '6-Pack',
     title: '6-Pack',
-    description: '6 personal training sessions. Use at your own pace.',
+    description: '6 personal training sessions to use at your own pace in studio, at home, or virtually.',
     category: 'plan',
     type: 'pack',
     price: 39900,
@@ -88,7 +88,7 @@ export const DEFAULT_SERVICES: DefaultServiceSeed[] = [
   {
     name: '12-Pack',
     title: '12-Pack',
-    description: '12 personal training sessions. Best value per session!',
+    description: '12 personal training sessions to use at your own pace in studio, at home, or virtually.',
     category: 'plan',
     type: 'pack',
     price: 69900,

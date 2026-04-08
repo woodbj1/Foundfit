@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 import BillingPortalButton from '@/components/nav/billing-portal-button'
 import CheckoutButton from '@/components/payments/checkout-button'
 import { createClient } from '@/lib/supabase/client'
+import { getServiceSalesDescription } from '@/lib/service-copy'
 import { formatPrice } from '@/lib/stripe'
 import type { Profile, Service, SessionPack, Subscription } from '@/lib/types'
 import {
@@ -24,21 +25,34 @@ import {
   getActiveSessionSubscriptions,
   getPrimarySessionSubscription,
 } from '@/lib/product-access'
+import { requiresTrainerSelectionForService } from '@/lib/purchase-attribution'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 type AccountSubscription = Subscription & { service?: Service | null }
 type AccountSessionPack = SessionPack & { service?: Service | null }
+type TrainerOption = {
+  id: string
+  profile?: { full_name: string | null } | null
+}
+type TrainerQueryRow = {
+  id: string
+  onboarding_completed_at: string | null
+  profile?: { full_name: string | null }[] | { full_name: string | null } | null
+}
 
 export default function AccountPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [services, setServices] = useState<Service[]>([])
   const [subscriptions, setSubscriptions] = useState<AccountSubscription[]>([])
   const [packs, setPacks] = useState<AccountSessionPack[]>([])
+  const [trainers, setTrainers] = useState<TrainerOption[]>([])
+  const [selectedTrainerId, setSelectedTrainerId] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [fullName, setFullName] = useState('')
@@ -51,7 +65,7 @@ export default function AccountPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      const [profileRes, servicesRes, subRes, packsRes] = await Promise.all([
+      const [profileRes, servicesRes, subRes, packsRes, trainersRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
         supabase.from('services').select('*').eq('is_active', true).order('price'),
         supabase
@@ -65,6 +79,11 @@ export default function AccountPage() {
           .select('*, service:services(*)')
           .eq('client_id', user.id)
           .order('purchased_at', { ascending: false }),
+        supabase
+          .from('trainers')
+          .select('id, onboarding_completed_at, profile:profiles!trainers_user_id_fkey(full_name)')
+          .eq('is_active', true)
+          .not('onboarding_completed_at', 'is', null),
       ])
 
       if (profileRes.data) {
@@ -89,6 +108,16 @@ export default function AccountPage() {
             service: Array.isArray(pack.service) ? pack.service[0] : pack.service,
           }))
         )
+      }
+      if (trainersRes.data) {
+        const normalizedTrainers = (trainersRes.data as TrainerQueryRow[]).map((trainer) => ({
+          ...trainer,
+          profile: Array.isArray(trainer.profile) ? trainer.profile[0] : trainer.profile,
+        }))
+        setTrainers(normalizedTrainers)
+        if (normalizedTrainers.length === 1) {
+          setSelectedTrainerId(normalizedTrainers[0].id)
+        }
       }
       setLoading(false)
     }
@@ -122,6 +151,11 @@ export default function AccountPage() {
   const primarySessionSubscription = getPrimarySessionSubscription(subscriptions)
   const activePacks = getActiveSessionPacks(packs)
   const hasBillingHistory = subscriptions.length > 0 || packs.length > 0
+  const selectedTrainer =
+    trainers.find((trainer) => trainer.id === selectedTrainerId) ?? null
+  const servicesNeedingTrainer = services.filter((service) =>
+    requiresTrainerSelectionForService(service)
+  )
 
   if (loading) {
     return (
@@ -279,6 +313,47 @@ export default function AccountPage() {
           <CardDescription>Choose a training package or digital add-on</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {servicesNeedingTrainer.length > 0 ? (
+            <div className="rounded-lg border bg-muted/30 p-4">
+              <div className="space-y-2">
+                <Label htmlFor="trainer-select">Choose your trainer</Label>
+                {trainers.length > 0 ? (
+                  <>
+                    <Select
+                      value={selectedTrainerId}
+                      onValueChange={(value) => setSelectedTrainerId(value ?? '')}
+                    >
+                      <SelectTrigger className="w-full" size="default">
+                        <SelectValue placeholder="Select a trainer for live training and meal plans" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {trainers.map((trainer) => (
+                          <SelectItem key={trainer.id} value={trainer.id}>
+                            {trainer.profile?.full_name || 'Trainer'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Live training and meal plan purchases will be assigned to{' '}
+                      <strong>{selectedTrainer?.profile?.full_name || 'your selected trainer'}</strong>
+                      {' '}for scheduling, client history, and earnings.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    No trainers are currently available for new live-training purchases.
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="rounded-lg border border-primary/15 bg-primary/5 p-4 text-sm text-muted-foreground">
+            All training packages can be booked in studio, at home, or virtually once purchased.
+            The standalone <strong>Virtual Session</strong> remains available if you just want a one-off online session.
+          </div>
+
           <div>
             <h3 className="font-medium mb-3">Training Services</h3>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -294,9 +369,20 @@ export default function AccountPage() {
                       <span className="text-sm font-normal text-muted-foreground">/mo</span>
                     )}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-1 mb-3">{service.description}</p>
-                  <CheckoutButton serviceId={service.id} size="sm" className="w-full">
-                    Purchase
+                  <p className="text-xs text-muted-foreground mt-1 mb-3">
+                    {getServiceSalesDescription(service)}
+                  </p>
+                  <CheckoutButton
+                    serviceId={service.id}
+                    trainerId={selectedTrainerId || undefined}
+                    trainerRequired={requiresTrainerSelectionForService(service)}
+                    disabled={requiresTrainerSelectionForService(service) && !selectedTrainerId}
+                    size="sm"
+                    className="w-full"
+                  >
+                    {requiresTrainerSelectionForService(service) && !selectedTrainerId
+                      ? 'Choose Trainer First'
+                      : 'Purchase'}
                   </CheckoutButton>
                 </div>
               ))}
@@ -319,14 +405,25 @@ export default function AccountPage() {
                         <span className="text-sm font-normal text-muted-foreground">/mo</span>
                       )}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1 mb-3">{service.description}</p>
+                    <p className="text-xs text-muted-foreground mt-1 mb-3">
+                      {getServiceSalesDescription(service)}
+                    </p>
                     <CheckoutButton
                       serviceId={service.id}
+                      trainerId={
+                        requiresTrainerSelectionForService(service)
+                          ? selectedTrainerId || undefined
+                          : undefined
+                      }
+                      trainerRequired={requiresTrainerSelectionForService(service)}
+                      disabled={requiresTrainerSelectionForService(service) && !selectedTrainerId}
                       size="sm"
                       variant="outline"
                       className="w-full"
                     >
-                      Purchase
+                      {requiresTrainerSelectionForService(service) && !selectedTrainerId
+                        ? 'Choose Trainer First'
+                        : 'Purchase'}
                     </CheckoutButton>
                   </div>
                 ))}

@@ -16,6 +16,7 @@ import HeroCarousel, { type HeroCarouselSlide } from '@/components/marketing/her
 import { Button } from '@/components/ui/button'
 import Footer from '@/components/Footer'
 import { getPublicServiceCatalog, type PublicService } from '@/lib/public-catalog'
+import { getServiceSalesDescription } from '@/lib/service-copy'
 import { SITE, formatPrice } from '@/lib/site-config'
 
 const features = [
@@ -364,7 +365,7 @@ export default async function HomePage() {
                         {service.title}
                       </h3>
                       <p className={isFeatured ? 'text-purple-50' : 'text-gray-600'}>
-                        {service.description}
+                        {getServiceSalesDescription(service)}
                       </p>
                     </div>
 
