@@ -1,0 +1,103 @@
+import type { ConfigContext, ExpoConfig } from 'expo/config'
+
+const packageJson = require('./package.json')
+
+type AppVariant = 'development' | 'preview' | 'production'
+
+const appVariant = (process.env.APP_VARIANT as AppVariant | undefined) ?? 'production'
+const isDevelopment = appVariant === 'development'
+const isPreview = appVariant === 'preview'
+
+const displayName = isDevelopment
+  ? 'FoundFit Dev'
+  : isPreview
+    ? 'FoundFit Preview'
+    : 'FoundFit'
+
+const scheme = isDevelopment ? 'foundfit-dev' : isPreview ? 'foundfit-preview' : 'foundfit'
+const bundleIdentifier = isDevelopment
+  ? 'net.foundfit.app.dev'
+  : isPreview
+    ? 'net.foundfit.app.preview'
+    : 'net.foundfit.app'
+const androidPackage = isDevelopment
+  ? 'net.foundfit.app.dev'
+  : isPreview
+    ? 'net.foundfit.app.preview'
+    : 'net.foundfit.app'
+
+export default ({ config }: ConfigContext): ExpoConfig => {
+  const plugins: NonNullable<ExpoConfig['plugins']> = [
+    'expo-router',
+    [
+      'expo-splash-screen',
+      {
+        backgroundColor: '#fbf6fd',
+        android: {
+          image: './assets/images/brand/foundfit-app-icon.png',
+          imageWidth: 124,
+        },
+      },
+    ],
+    [
+      'expo-calendar',
+      {
+        calendarPermission:
+          'Allow FoundFit to add approved training sessions to your calendar when you request it.',
+        remindersPermission: false,
+      },
+    ],
+    'expo-secure-store',
+    'expo-video',
+    'expo-web-browser',
+  ]
+
+  if (isDevelopment) {
+    plugins.splice(1, 0, ['expo-dev-client', { addGeneratedScheme: true }])
+  }
+
+  return {
+    ...config,
+    name: displayName,
+    slug: 'foundfit-mobile',
+    version: packageJson.version,
+    orientation: 'portrait',
+    icon: './assets/images/brand/foundfit-app-icon.png',
+    scheme,
+    userInterfaceStyle: 'automatic',
+    runtimeVersion: {
+      policy: 'appVersion',
+    },
+    ios: {
+      bundleIdentifier,
+      buildNumber: '1',
+      icon: './assets/images/brand/foundfit-app-icon.png',
+      supportsTablet: false,
+      config: {
+        usesNonExemptEncryption: false,
+      },
+    },
+    android: {
+      package: androidPackage,
+      versionCode: 1,
+      adaptiveIcon: {
+        backgroundColor: '#fbf6fd',
+        foregroundImage: './assets/images/brand/foundfit-app-icon.png',
+        monochromeImage: './assets/images/brand/foundfit-app-icon.png',
+      },
+      predictiveBackGestureEnabled: false,
+    },
+    web: {
+      output: 'static',
+      favicon: './assets/images/favicon.png',
+    },
+    plugins,
+    experiments: {
+      typedRoutes: true,
+      reactCompiler: true,
+    },
+    extra: {
+      appVariant,
+    },
+  }
+}
