@@ -18,7 +18,11 @@ const PUBLIC_PATHS = new Set([
   '/terms-of-service',
 ])
 
-function isPublicPath(pathname: string) {
+function hasBearerAuth(request: NextRequest) {
+  return request.headers.get('authorization')?.startsWith('Bearer ') ?? false
+}
+
+function isPublicPath(pathname: string, request: NextRequest) {
   if (PUBLIC_PATHS.has(pathname)) {
     return true
   }
@@ -32,6 +36,10 @@ function isPublicPath(pathname: string) {
   }
 
   if (pathname.startsWith('/api/public/')) {
+    return true
+  }
+
+  if (pathname.startsWith('/api/') && hasBearerAuth(request)) {
     return true
   }
 
@@ -94,7 +102,7 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user && !isPublicPath(request.nextUrl.pathname)) {
+  if (!user && !isPublicPath(request.nextUrl.pathname, request)) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.delete('code')

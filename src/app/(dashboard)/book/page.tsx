@@ -4,12 +4,13 @@ import BookingFlow, {
   type BookingServiceOption,
   type RescheduleBookingState,
 } from '@/components/bookings/booking-flow'
+import { getTrainerAwareBookableServiceOptions } from '@/lib/bookable-services'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { AlertCircle, ShoppingCart } from 'lucide-react'
 import Link from 'next/link'
 import type { Profile } from '@/lib/types'
-import { getTotalRemainingSessions, isPackExpired } from '@/lib/product-access'
+import { getTotalRemainingSessions } from '@/lib/product-access'
 
 const DEFAULT_BOOKING_WINDOW_DAYS = 14
 
@@ -20,70 +21,6 @@ interface BookingTrainer {
   is_active: boolean
   onboarding_completed_at: string | null
   profile?: Pick<Profile, 'id' | 'full_name' | 'avatar_url' | 'timezone'>
-}
-
-type TrainerBoundBookingServiceOption = BookingServiceOption & {
-  trainerId?: string | null
-}
-
-function getTrainerAwareBookableServiceOptions(
-  subscriptions: Array<{
-    trainer_id?: string | null
-    service: BookingServiceOption['service'] | null
-  }>,
-  packs: Array<{
-    trainer_id?: string | null
-    total_sessions: number
-    used_sessions: number
-    expires_at?: string | null
-    service: BookingServiceOption['service'] | null
-  }>
-): TrainerBoundBookingServiceOption[] {
-  const options = new Map<string, TrainerBoundBookingServiceOption>()
-
-  for (const subscription of subscriptions) {
-    if (!subscription.service || subscription.service.is_session === false) continue
-
-    options.set(subscription.service.id, {
-      service: subscription.service,
-      accessType: 'subscription',
-      remainingSessions: null,
-      trainerId: subscription.trainer_id || null,
-    })
-  }
-
-  for (const pack of packs) {
-    if (
-      !pack.service ||
-      pack.service.is_session === false ||
-      isPackExpired(pack) ||
-      pack.used_sessions >= pack.total_sessions
-    ) {
-      continue
-    }
-
-    const remainingSessions = Math.max(pack.total_sessions - pack.used_sessions, 0)
-    const existing = options.get(pack.service.id)
-
-    if (existing) {
-      if (existing.accessType === 'pack') {
-        existing.remainingSessions = (existing.remainingSessions ?? 0) + remainingSessions
-      }
-      if (!existing.trainerId && pack.trainer_id) {
-        existing.trainerId = pack.trainer_id
-      }
-      continue
-    }
-
-    options.set(pack.service.id, {
-      service: pack.service,
-      accessType: 'pack',
-      remainingSessions,
-      trainerId: pack.trainer_id || null,
-    })
-  }
-
-  return Array.from(options.values())
 }
 
 export default async function BookPage({

@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "FoundFit",
+    "slug": "foundfit-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/brand/foundfit-app-icon.png",
+    "scheme": "foundfit",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/images/brand/foundfit-app-icon.png"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#fbf6fd",
+        "foregroundImage": "./assets/images/brand/foundfit-app-icon.png",
+        "monochromeImage": "./assets/images/brand/foundfit-app-icon.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#fbf6fd",
+          "android": {
+            "image": "./assets/images/brand/foundfit-app-icon.png",
+            "imageWidth": 124
+          }
+        }
+      ],
+      "expo-secure-store",
+      "expo-video"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
