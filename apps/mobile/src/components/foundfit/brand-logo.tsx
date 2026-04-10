@@ -1,5 +1,4 @@
-import { Image } from 'expo-image'
-import { StyleSheet, View } from 'react-native'
+import { Image, StyleSheet, View } from 'react-native'
 
 import FoundFitLogo from '../../../assets/images/brand/foundfit-logo-vertical.png'
 
@@ -13,8 +12,7 @@ export function BrandLogo({ width = 140 }: BrandLogoProps) {
       <Image
         source={FoundFitLogo}
         style={styles.logo}
-        contentFit="contain"
-        alt="FoundFit logo"
+        resizeMode="contain"
         accessibilityLabel="FoundFit logo"
       />
     </View>

@@ -5,7 +5,7 @@ import { colors } from '@/lib/theme'
 import { useAuth } from '@/providers/auth-provider'
 
 export default function AuthLayout() {
-  const { session, loading } = useAuth()
+  const { session, loading, startupError } = useAuth()
 
   if (loading) {
     return (
@@ -24,6 +24,10 @@ export default function AuthLayout() {
 
   if (session) {
     return <Redirect href="/(app)/dashboard" />
+  }
+
+  if (startupError) {
+    return <Redirect href="/" />
   }
 
   return <Stack screenOptions={{ headerShown: false }} />
