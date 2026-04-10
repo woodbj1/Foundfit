@@ -1,6 +1,6 @@
 import { Image, StyleSheet, View } from 'react-native'
 
-import FoundFitLogo from '../../../assets/images/brand/foundfit-logo-vertical.png'
+import FoundFitLogo from '../../../assets/images/brand/foundfit-app-icon.png'
 
 type BrandLogoProps = {
   width?: number

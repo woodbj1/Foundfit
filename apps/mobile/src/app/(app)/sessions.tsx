@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import * as WebBrowser from 'expo-web-browser'
 
 import { Screen } from '@/components/foundfit/screen'
 import {
@@ -14,6 +13,7 @@ import {
 } from '@/components/foundfit/ui'
 import { apiRequest } from '@/lib/api'
 import { addSessionToCalendar } from '@/lib/calendar'
+import { openExternalUrl } from '@/lib/external-url'
 import { formatDateInTimeZone, formatTimeRangeInTimeZone, getLocationLabel } from '@/lib/format'
 import { colors, spacing } from '@/lib/theme'
 import { useAuth } from '@/providers/auth-provider'
@@ -105,7 +105,7 @@ export default function SessionsScreen() {
         accessToken: session.access_token,
       })
 
-      await WebBrowser.openBrowserAsync(response.url)
+      await openExternalUrl(response.url, 'Could not open the join link.')
     } catch (error) {
       Alert.alert('Could not join call', error instanceof Error ? error.message : 'Please try again.')
     }

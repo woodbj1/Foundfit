@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import * as WebBrowser from 'expo-web-browser'
 
 import { Screen } from '@/components/foundfit/screen'
 import {
@@ -13,6 +12,7 @@ import {
   SecondaryButton,
 } from '@/components/foundfit/ui'
 import { apiRequest } from '@/lib/api'
+import { openExternalUrl } from '@/lib/external-url'
 import { formatDateInTimeZone, formatPrice, formatTimeRangeInTimeZone, getLocationLabel } from '@/lib/format'
 import { colors, spacing } from '@/lib/theme'
 import { useAuth } from '@/providers/auth-provider'
@@ -195,7 +195,7 @@ export default function DashboardScreen() {
                 <View style={{ marginTop: spacing.sm }}>
                   <SecondaryButton
                     label="Open Full Library"
-                    onPress={() => WebBrowser.openBrowserAsync(data.access.libraryAccess!.accessUrl)}
+                    onPress={() => openExternalUrl(data.access.libraryAccess!.accessUrl)}
                   />
                 </View>
               </View>

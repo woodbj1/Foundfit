@@ -47,9 +47,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         remindersPermission: false,
       },
     ],
-    'expo-secure-store',
-    'expo-video',
-    'expo-web-browser',
   ]
 
   if (isDevelopment) {
@@ -94,7 +91,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     plugins,
     experiments: {
       typedRoutes: true,
-      reactCompiler: true,
     },
     extra: {
       appVariant,

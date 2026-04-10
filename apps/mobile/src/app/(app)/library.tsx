@@ -6,7 +6,6 @@ import {
   Text,
   View,
 } from 'react-native'
-import * as WebBrowser from 'expo-web-browser'
 
 import { Screen } from '@/components/foundfit/screen'
 import {
@@ -37,6 +36,7 @@ import {
   type WorkoutBodyPart,
   type WorkoutGoal,
 } from '@/lib/workout-catalog'
+import { openExternalUrl } from '@/lib/external-url'
 import { useAuth } from '@/providers/auth-provider'
 import type { MobileLibraryResponse } from '@/types/foundfit'
 
@@ -111,7 +111,7 @@ export default function LibraryScreen() {
         library && library.hasAccess ? (
           <SecondaryButton
             label="Full Library"
-            onPress={() => WebBrowser.openBrowserAsync(library.access.accessUrl)}
+            onPress={() => openExternalUrl(library.access.accessUrl)}
           />
         ) : undefined
       }
@@ -327,7 +327,7 @@ export default function LibraryScreen() {
                       <SecondaryButton label="Close" onPress={() => setSelectedExercise(null)} />
                       <PrimaryButton
                         label="Open Full Library"
-                        onPress={() => WebBrowser.openBrowserAsync(library.access.accessUrl)}
+                        onPress={() => openExternalUrl(library.access.accessUrl)}
                       />
                     </View>
                   </>

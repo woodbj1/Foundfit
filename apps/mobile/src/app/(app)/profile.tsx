@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, StyleSheet, Text, View } from 'react-native'
-import * as WebBrowser from 'expo-web-browser'
 
 import { BrandLogo } from '@/components/foundfit/brand-logo'
 import { Screen } from '@/components/foundfit/screen'
@@ -13,6 +12,7 @@ import {
 } from '@/components/foundfit/ui'
 import { apiRequest } from '@/lib/api'
 import { env } from '@/lib/env'
+import { openExternalUrl } from '@/lib/external-url'
 import { formatDateInTimeZone, formatPrice } from '@/lib/format'
 import { colors } from '@/lib/theme'
 import { useAuth } from '@/providers/auth-provider'
@@ -108,7 +108,7 @@ export default function ProfileScreen() {
 
           <SectionCard>
             <SectionTitle title="Web Account" subtitle="Billing, purchases, and admin-heavy account tasks stay on the web for now." />
-            <SecondaryButton label="Open FoundFit on the Web" onPress={() => WebBrowser.openBrowserAsync(env.appUrl)} />
+            <SecondaryButton label="Open FoundFit on the Web" onPress={() => openExternalUrl(env.appUrl)} />
           </SectionCard>
 
           <PrimaryButton label="Log Out" onPress={handleLogout} />

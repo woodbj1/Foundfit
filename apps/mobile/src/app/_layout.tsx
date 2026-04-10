@@ -1,24 +1,34 @@
 import 'react-native-gesture-handler'
+import '@/lib/runtime-errors'
 
 import { Stack } from 'expo-router'
+import type { ErrorBoundaryProps } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
+import { useEffect, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { colors } from '@/lib/theme'
 import { envValidationError } from '@/lib/env'
+import { getLatestRuntimeError, subscribeToRuntimeErrors } from '@/lib/runtime-errors'
 import { AuthProvider } from '@/providers/auth-provider'
 
 export default function RootLayout() {
-  if (envValidationError) {
+  const [runtimeError, setRuntimeError] = useState<string | null>(getLatestRuntimeError())
+
+  useEffect(() => {
+    return subscribeToRuntimeErrors(setRuntimeError)
+  }, [])
+
+  if (envValidationError || runtimeError) {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <View style={styles.errorScreen}>
             <View style={styles.errorCard}>
               <Text style={styles.errorTitle}>FoundFit needs a quick configuration fix</Text>
-              <Text style={styles.errorBody}>{envValidationError}</Text>
+              <Text style={styles.errorBody}>{envValidationError || runtimeError}</Text>
             </View>
           </View>
         </SafeAreaProvider>
@@ -38,6 +48,23 @@ export default function RootLayout() {
             }}
           />
         </AuthProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  )
+}
+
+export function ErrorBoundary({ error }: ErrorBoundaryProps) {
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <View style={styles.errorScreen}>
+          <View style={styles.errorCard}>
+            <Text style={styles.errorTitle}>FoundFit hit an app error</Text>
+            <Text style={styles.errorBody}>
+              {error.message || 'The app ran into a startup issue before the first screen could finish loading.'}
+            </Text>
+          </View>
+        </View>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   )
