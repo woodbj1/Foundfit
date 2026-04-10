@@ -49,10 +49,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ],
   ]
 
-  if (isDevelopment) {
-    plugins.splice(1, 0, ['expo-dev-client', { addGeneratedScheme: true }])
-  }
-
   return {
     ...config,
     name: displayName,
