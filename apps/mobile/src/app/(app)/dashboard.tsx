@@ -222,6 +222,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   sessionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,

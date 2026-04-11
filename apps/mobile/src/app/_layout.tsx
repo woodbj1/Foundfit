@@ -4,72 +4,31 @@ import '@/lib/runtime-errors'
 import { Stack } from 'expo-router'
 import type { ErrorBoundaryProps } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
-import type { ComponentType, PropsWithChildren } from 'react'
 import { useEffect, useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { colors } from '@/lib/theme'
-import { envValidationError } from '@/lib/env'
 import { getLatestRuntimeError, subscribeToRuntimeErrors } from '@/lib/runtime-errors'
-
-type AuthProviderComponent = ComponentType<PropsWithChildren>
+import { AuthProvider } from '@/providers/auth-provider'
 
 export default function RootLayout() {
   const [runtimeError, setRuntimeError] = useState<string | null>(getLatestRuntimeError())
-  const [providerError, setProviderError] = useState<string | null>(null)
-  const [AuthProviderComponent, setAuthProviderComponent] = useState<AuthProviderComponent | null>(null)
 
   useEffect(() => {
     return subscribeToRuntimeErrors(setRuntimeError)
   }, [])
 
-  useEffect(() => {
-    let isMounted = true
-
-    void import('@/providers/auth-provider')
-      .then((module) => {
-        if (isMounted) {
-          setAuthProviderComponent(() => module.AuthProvider)
-          setProviderError(null)
-        }
-      })
-      .catch((error) => {
-        if (isMounted) {
-          setProviderError(error instanceof Error ? error.message : 'Could not load authentication.')
-        }
-      })
-
-    return () => {
-      isMounted = false
-    }
-  }, [])
-
-  const launchError = envValidationError || runtimeError || providerError
-
-  if (launchError) {
+  if (runtimeError) {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <View style={styles.errorScreen}>
             <View style={styles.errorCard}>
               <Text style={styles.errorTitle}>FoundFit needs a quick configuration fix</Text>
-              <Text style={styles.errorBody}>{launchError}</Text>
+              <Text style={styles.errorBody}>{runtimeError}</Text>
             </View>
-          </View>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    )
-  }
-
-  if (!AuthProviderComponent) {
-    return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          <View style={styles.loadingScreen}>
-            <Text style={styles.loadingTitle}>FoundFit</Text>
-            <Text style={styles.loadingBody}>Starting your mobile studio...</Text>
           </View>
         </SafeAreaProvider>
       </GestureHandlerRootView>
@@ -79,7 +38,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <AuthProviderComponent>
+        <AuthProvider>
           <StatusBar style="dark" backgroundColor={colors.background} />
           <Stack
             screenOptions={{
@@ -87,7 +46,7 @@ export default function RootLayout() {
               contentStyle: { backgroundColor: colors.background },
             }}
           />
-        </AuthProviderComponent>
+        </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   )
