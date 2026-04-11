@@ -1,14 +1,11 @@
-'use client'
-
 import type { PropsWithChildren } from 'react'
 import { createContext, useContext, useEffect, useState } from 'react'
-import type { Session } from '@supabase/supabase-js'
 
 import { envValidationError } from '@/lib/env'
-import { supabase } from '@/lib/supabase'
+import { getSupabaseClient, type MobileSession } from '@/lib/supabase'
 
 type AuthContextValue = {
-  session: Session | null
+  session: MobileSession | null
   loading: boolean
   startupError: string | null
   signIn: (email: string, password: string) => Promise<void>
@@ -19,48 +16,75 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: PropsWithChildren) {
-  const [session, setSession] = useState<Session | null>(null)
+  const [session, setSession] = useState<MobileSession | null>(null)
   const [loading, setLoading] = useState(true)
   const [startupError, setStartupError] = useState<string | null>(envValidationError)
 
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false)
-      return
-    }
-
     let isMounted = true
+    let unsubscribe: (() => void) | null = null
 
-    void supabase.auth
-      .getSession()
-      .then(({ data }) => {
+    async function restoreSession() {
+      if (envValidationError) {
         if (isMounted) {
-          setSession(data.session)
           setLoading(false)
         }
-      })
-      .catch((error) => {
+        return
+      }
+
+      try {
+        const supabase = await getSupabaseClient()
+
+        if (!supabase) {
+          if (isMounted) {
+            setLoading(false)
+          }
+          return
+        }
+
+        const { data } = await supabase.auth.getSession()
+
+        if (!isMounted) {
+          return
+        }
+
+        setSession(data.session)
+        setStartupError(null)
+        setLoading(false)
+
+        const {
+          data: { subscription },
+        } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+          if (!isMounted) {
+            return
+          }
+
+          setSession(nextSession)
+          setStartupError(null)
+          setLoading(false)
+        })
+
+        unsubscribe = () => subscription.unsubscribe()
+      } catch (error) {
         if (isMounted) {
           setStartupError(error instanceof Error ? error.message : 'Could not restore your session.')
           setSession(null)
           setLoading(false)
         }
-      })
+      }
+    }
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession)
-      setLoading(false)
-    })
+    void restoreSession()
 
     return () => {
       isMounted = false
-      subscription.unsubscribe()
+      unsubscribe?.()
     }
   }, [])
 
   async function signIn(email: string, password: string) {
+    const supabase = await getSupabaseClient()
+
     if (!supabase) {
       throw new Error(startupError || 'Supabase is not configured for this build.')
     }
@@ -73,9 +97,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (error) {
       throw error
     }
+
+    setStartupError(null)
   }
 
   async function signUp(fullName: string, email: string, password: string) {
+    const supabase = await getSupabaseClient()
+
     if (!supabase) {
       throw new Error(startupError || 'Supabase is not configured for this build.')
     }
@@ -94,9 +122,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (error) {
       throw error
     }
+
+    setStartupError(null)
   }
 
   async function signOut() {
+    const supabase = await getSupabaseClient()
+
     if (!supabase) {
       throw new Error(startupError || 'Supabase is not configured for this build.')
     }
@@ -106,6 +138,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (error) {
       throw error
     }
+
+    setStartupError(null)
   }
 
   return (

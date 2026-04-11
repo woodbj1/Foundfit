@@ -58,8 +58,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     icon: './assets/images/brand/foundfit-app-icon.png',
     scheme,
     userInterfaceStyle: 'automatic',
-    runtimeVersion: {
-      policy: 'appVersion',
+    updates: {
+      enabled: false,
+      checkAutomatically: 'NEVER',
     },
     ios: {
       bundleIdentifier,
