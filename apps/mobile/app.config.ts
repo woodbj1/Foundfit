@@ -67,6 +67,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       buildNumber: '1',
       icon: './assets/images/brand/foundfit-app-icon.png',
       supportsTablet: false,
+      newArchEnabled: false,
       config: {
         usesNonExemptEncryption: false,
       },
