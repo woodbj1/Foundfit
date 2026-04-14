@@ -34,8 +34,8 @@ export async function addSessionToCalendar(
   }
 
   const notes = [
-    `Trainer: ${booking.trainerName}`,
-    `Service: ${booking.serviceName}`,
+    booking.trainerName ? `Trainer: ${booking.trainerName}` : null,
+    booking.serviceName ? `Service: ${booking.serviceName}` : null,
     `Location: ${getLocationLabel(booking.locationType)}`,
     booking.notes ? `Notes: ${booking.notes}` : null,
     joinUrl ? `Join link: ${joinUrl}` : null,
@@ -44,7 +44,7 @@ export async function addSessionToCalendar(
     .join('\n')
 
   await Calendar.createEventAsync(calendarId, {
-    title: `FoundFit - ${booking.serviceName}`,
+    title: `FoundFit - ${booking.serviceName || 'Session'}`,
     startDate: new Date(booking.startTime),
     endDate: new Date(booking.endTime),
     location:

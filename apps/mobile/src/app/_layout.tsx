@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler'
-import '@/lib/runtime-errors'
+// import '@/lib/runtime-errors'
 
 import { Stack } from 'expo-router'
 import type { ErrorBoundaryProps } from 'expo-router'
@@ -10,30 +10,30 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { colors } from '@/lib/theme'
-import { getLatestRuntimeError, subscribeToRuntimeErrors } from '@/lib/runtime-errors'
+// import { getLatestRuntimeError, subscribeToRuntimeErrors } from '@/lib/runtime-errors'
 import { AuthProvider } from '@/providers/auth-provider'
 
 export default function RootLayout() {
-  const [runtimeError, setRuntimeError] = useState<string | null>(getLatestRuntimeError())
+  // const [runtimeError, setRuntimeError] = useState<string | null>(getLatestRuntimeError())
 
-  useEffect(() => {
-    return subscribeToRuntimeErrors(setRuntimeError)
-  }, [])
+  // useEffect(() => {
+  //   return subscribeToRuntimeErrors(setRuntimeError)
+  // }, [])
 
-  if (runtimeError) {
-    return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          <View style={styles.errorScreen}>
-            <View style={styles.errorCard}>
-              <Text style={styles.errorTitle}>FoundFit needs a quick configuration fix</Text>
-              <Text style={styles.errorBody}>{runtimeError}</Text>
-            </View>
-          </View>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    )
-  }
+  // if (runtimeError) {
+  //   return (
+  //     <GestureHandlerRootView style={{ flex: 1 }}>
+  //       <SafeAreaProvider>
+  //         <View style={styles.errorScreen}>
+  //           <View style={styles.errorCard}>
+  //             <Text style={styles.errorTitle}>FoundFit needs a quick configuration fix</Text>
+  //             <Text style={styles.errorBody}>{runtimeError}</Text>
+  //           </View>
+  //         </View>
+  //       </SafeAreaProvider>
+  //     </GestureHandlerRootView>
+  //   )
+  // }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

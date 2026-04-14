@@ -27,7 +27,13 @@ export async function apiRequest<T>(path: string, options: ApiOptions = {}): Pro
   })
 
   const text = await response.text()
-  const data = text ? JSON.parse(text) : null
+  let data: any = null
+
+  try {
+    data = text ? JSON.parse(text) : null
+  } catch (parseError) {
+    throw new ApiError('Invalid JSON response from server', response.status)
+  }
 
   if (!response.ok) {
     throw new ApiError(data?.error || 'Request failed', response.status)

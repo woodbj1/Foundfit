@@ -30,6 +30,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const plugins: NonNullable<ExpoConfig['plugins']> = [
     'expo-router',
     [
+      'expo-build-properties',
+      {
+        ios: { newArchEnabled: false },
+        android: { newArchEnabled: false },
+      },
+    ],
+    [
       'expo-splash-screen',
       {
         backgroundColor: '#fbf6fd',
@@ -67,7 +74,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       buildNumber: '1',
       icon: './assets/images/brand/foundfit-app-icon.png',
       supportsTablet: false,
-      newArchEnabled: false,
       config: {
         usesNonExemptEncryption: false,
       },

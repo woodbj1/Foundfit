@@ -1,6 +1,6 @@
 {
   "name": "foundfit-mobile",
-  "main": "expo-router/entry",
+  "main": "src/entry.js",
   "version": "1.0.0",
   "scripts": {
     "start": "cross-env APP_VARIANT=development expo start",
@@ -27,6 +27,7 @@
     "@supabase/supabase-js": "^2.102.1",
     "date-fns": "^4.1.0",
     "expo": "~55.0.15",
+    "expo-build-properties": "~55.0.13",
     "expo-calendar": "~55.0.14",
     "expo-constants": "~55.0.13",
     "expo-font": "~55.0.6",

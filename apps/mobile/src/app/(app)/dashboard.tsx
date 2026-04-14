@@ -188,7 +188,7 @@ export default function DashboardScreen() {
               </View>
             ))}
 
-            {data.access.libraryAccess ? (
+            {data.access.libraryAccess && data.access.libraryAccess.accessUrl ? (
               <View style={styles.accessCard}>
                 <Text style={styles.accessTitle}>{data.access.libraryAccess.serviceName}</Text>
                 <Text style={styles.accessMeta}>Virtual studio access is active.</Text>

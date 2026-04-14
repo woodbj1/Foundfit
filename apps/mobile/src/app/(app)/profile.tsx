@@ -32,6 +32,8 @@ export default function ProfileScreen() {
         accessToken: session.access_token,
       })
       setData(response)
+    } catch (error) {
+      Alert.alert('Could not load profile', error instanceof Error ? error.message : 'Please try again.')
     } finally {
       setLoading(false)
     }

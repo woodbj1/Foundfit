@@ -22,52 +22,40 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     let isMounted = true
-    let unsubscribe: (() => void) | null = null
 
     async function restoreSession() {
-      if (envValidationError) {
-        if (isMounted) {
-          setLoading(false)
-        }
-        return
-      }
-
       try {
         const supabase = await getSupabaseClient()
 
         if (!supabase) {
           if (isMounted) {
+            setStartupError('Supabase not configured')
             setLoading(false)
           }
           return
         }
 
-        const { data } = await supabase.auth.getSession()
+        const { data, error: sessionError } = await supabase.auth.getSession()
 
         if (!isMounted) {
+          return
+        }
+
+        if (sessionError) {
+          setStartupError(sessionError.message)
+          setSession(null)
+          setLoading(false)
           return
         }
 
         setSession(data.session)
         setStartupError(null)
         setLoading(false)
-
-        const {
-          data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-          if (!isMounted) {
-            return
-          }
-
-          setSession(nextSession)
-          setStartupError(null)
-          setLoading(false)
-        })
-
-        unsubscribe = () => subscription.unsubscribe()
       } catch (error) {
         if (isMounted) {
-          setStartupError(error instanceof Error ? error.message : 'Could not restore your session.')
+          const errorMessage =
+            error instanceof Error ? error.message : 'Could not restore your session.'
+          setStartupError(errorMessage)
           setSession(null)
           setLoading(false)
         }
@@ -78,7 +66,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
     return () => {
       isMounted = false
-      unsubscribe?.()
     }
   }, [])
 

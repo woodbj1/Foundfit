@@ -23,7 +23,7 @@ export default function AuthLayout() {
   }
 
   if (session) {
-    return <Redirect href="/(app)/dashboard" />
+    return <Redirect href="/dashboard" />
   }
 
   if (startupError) {
