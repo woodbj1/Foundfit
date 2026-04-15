@@ -1,4 +1,4 @@
-const DEFAULT_LOCATION = 'Foundation Fitness Studio'
+const DEFAULT_LOCATION = 'FoundFit Studio'
 const DEFAULT_APP_URL = 'https://foundfit.net'
 
 type SessionCalendarInviteOptions = {
@@ -40,7 +40,7 @@ function getAppUrl() {
 }
 
 function getSessionTitle(serviceName: string) {
-  return `Foundation Fitness ${serviceName}`
+  return `FoundFit ${serviceName}`
 }
 
 function getSessionLocation({
@@ -65,7 +65,7 @@ function getSessionDescription({
   joinUrl,
   notes,
 }: Pick<SessionCalendarInviteOptions, 'serviceName' | 'trainerName' | 'joinUrl' | 'notes'>) {
-  const lines = [`Foundation Fitness ${serviceName}`]
+  const lines = [`FoundFit ${serviceName}`]
 
   if (trainerName) {
     lines.push(`Trainer: ${trainerName}`)
@@ -122,7 +122,7 @@ export function createSessionCalendarInvite({
   const icsContent = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Foundation Fitness//FoundFit//EN',
+    'PRODID:-//FoundFit//FoundFit//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     'BEGIN:VEVENT',
@@ -147,3 +147,4 @@ export function createSessionCalendarInvite({
     },
   }
 }
+

@@ -23,7 +23,7 @@ export default function BrandLogo({
     <span className={cn('inline-flex items-center', className)}>
       <Image
         src={`/api/public/branding/logo?variant=${variant}`}
-        alt="Foundation Fitness logo"
+        alt="FoundFit logo"
         width={1024}
         height={isHeader ? 138 : 860}
         priority={priority}

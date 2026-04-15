@@ -7,7 +7,7 @@ const SUPABASE_ACCESS_TOKEN = process.env.SUPABASE_ACCESS_TOKEN
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 const SMTP_FROM_EMAIL =
   process.env.SUPABASE_AUTH_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || 'noreply@foundfit.net'
-const SMTP_SENDER_NAME = process.env.SUPABASE_AUTH_SENDER_NAME || 'Foundation Fitness'
+const SMTP_SENDER_NAME = process.env.SUPABASE_AUTH_SENDER_NAME || 'FoundFit'
 
 const TEMPLATE_CONFIG = [
   {

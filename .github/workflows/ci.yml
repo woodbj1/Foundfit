@@ -1,0 +1,71 @@
+name: FoundFit CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  web:
+    name: Web lint, typecheck, build, readiness
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_APP_URL: https://ci.foundfit.net
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-foundfit.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-key
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_ci_dummy
+      STRIPE_SECRET_KEY: sk_test_ci_dummy
+      STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Lint web app
+        run: npm run lint
+
+      - name: Typecheck web app
+        run: npm run typecheck
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Run production readiness check
+        run: npm run readiness
+
+  mobile:
+    name: Mobile lint, typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Install mobile dependencies
+        run: npm ci
+
+      - name: Lint mobile app
+        run: npm run lint
+
+      - name: Typecheck mobile app
+        run: npm run typecheck

@@ -76,10 +76,14 @@ export default function AdminSettingsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [{ data }, integrationResponse] = await Promise.all([
+        const [{ data, error }, integrationResponse] = await Promise.all([
           supabase.from('settings').select('*'),
           fetch('/api/admin/integrations/status', { cache: 'no-store' }),
         ])
+
+        if (error) {
+          throw error
+        }
 
         const merged = { ...DEFAULT_SETTINGS }
         if (data) {
@@ -117,7 +121,13 @@ export default function AdminSettingsPage() {
     )
 
     try {
-      await Promise.all(updates)
+      const results = await Promise.all(updates)
+      const failedUpdate = results.find((result) => result.error)
+
+      if (failedUpdate?.error) {
+        throw failedUpdate.error
+      }
+
       toast.success('Settings saved!')
     } catch {
       toast.error('Failed to save settings')

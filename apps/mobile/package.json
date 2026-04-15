@@ -1,6 +1,6 @@
 {
   "name": "foundfit-mobile",
-  "main": "src/entry.js",
+  "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
     "start": "cross-env APP_VARIANT=development expo start",
@@ -30,6 +30,7 @@
     "expo-build-properties": "~55.0.13",
     "expo-calendar": "~55.0.14",
     "expo-constants": "~55.0.13",
+    "expo-dev-client": "^55.0.27",
     "expo-font": "~55.0.6",
     "expo-linking": "~55.0.13",
     "expo-router": "~55.0.12",

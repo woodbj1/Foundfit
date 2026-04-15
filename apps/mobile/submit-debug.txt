@@ -1,0 +1,21 @@
+
+Looking up credentials configuration for net.foundfit.app...
+✔ App Store Connect API Key already set up.
+Using Api Key ID: GY65R52C23 ([Expo] EAS Submit sSczNBGNeS)
+
+ASC App ID:                 6762001409
+Project ID:                 70e41035-a46b-413f-b8b0-c9ae3f4d8432
+App Store Connect API Key:  
+    Key Name  :  [Expo] EAS Submit sSczNBGNeS
+    Key ID    :  GY65R52C23
+    Key Source:  EAS servers
+Build:                      
+    Build ID    :  c0553758-b442-4ba4-bdf4-14ace1b04158
+    Build Date  :  4/13/2026, 9:06:58 AM
+    App Version :  1.0.0
+    Build number:  13
+
+
+Submission details: https://expo.dev/accounts/woodbj1/projects/foundfit-mobile/submissions/e4048853-0cd0-417e-99cf-ae4039dd2edc
+
+Waiting for submission to complete. You can press Ctrl+C to exit.

@@ -53,11 +53,18 @@ function getStripeMode(key: string | undefined) {
 }
 
 export function getIntegrationStatuses(services: ServiceIntegrationShape[]): IntegrationStatus[] {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
   const stripeSecretKey = process.env.STRIPE_SECRET_KEY
   const stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET
   const resendApiKey = process.env.RESEND_API_KEY
   const resendFromEmail = process.env.RESEND_FROM_EMAIL
+  const googleAnalyticsPropertyId = process.env.GOOGLE_ANALYTICS_PROPERTY_ID
+  const googleAnalyticsClientEmail = process.env.GOOGLE_ANALYTICS_CLIENT_EMAIL
+  const googleAnalyticsPrivateKey = process.env.GOOGLE_ANALYTICS_PRIVATE_KEY
   const googleClientId = process.env.GOOGLE_CLIENT_ID
   const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET
   const dailyApiKey = process.env.DAILY_API_KEY
@@ -89,6 +96,30 @@ export function getIntegrationStatuses(services: ServiceIntegrationShape[]): Int
 
   const statuses: IntegrationStatus[] = [
     {
+      id: 'app-url',
+      label: 'App URL',
+      level: isConfigured(appUrl) ? 'ready' : 'error',
+      summary: isConfigured(appUrl)
+        ? `Public app URL is set to ${appUrl}.`
+        : 'NEXT_PUBLIC_APP_URL is missing or still set to a placeholder.',
+      details:
+        'Used for auth callbacks, Stripe redirects, trainer setup links, and email CTA links.',
+    },
+    {
+      id: 'supabase',
+      label: 'Supabase Core',
+      level:
+        isConfigured(supabaseUrl) && isConfigured(supabaseAnonKey) && isConfigured(supabaseServiceRoleKey)
+          ? 'ready'
+          : 'error',
+      summary:
+        isConfigured(supabaseUrl) && isConfigured(supabaseAnonKey) && isConfigured(supabaseServiceRoleKey)
+          ? 'Supabase public and server-side credentials are configured.'
+          : 'Supabase is missing one or more required app credentials.',
+      details:
+        'Required for auth, database access, storage, admin actions, and server-side provisioning flows.',
+    },
+    {
       id: 'stripe',
       label: 'Stripe',
       level:
@@ -119,6 +150,24 @@ export function getIntegrationStatuses(services: ServiceIntegrationShape[]): Int
           : 'Email notifications are not fully configured.',
       details:
         'Used for booking requests, approvals, payment confirmations, trainer invites, and meal plan delivery.',
+    },
+    {
+      id: 'analytics',
+      label: 'Google Analytics',
+      level:
+        isConfigured(googleAnalyticsPropertyId) &&
+        isConfigured(googleAnalyticsClientEmail) &&
+        isConfigured(googleAnalyticsPrivateKey)
+          ? 'ready'
+          : 'optional',
+      summary:
+        isConfigured(googleAnalyticsPropertyId) &&
+        isConfigured(googleAnalyticsClientEmail) &&
+        isConfigured(googleAnalyticsPrivateKey)
+          ? 'Google Analytics reporting credentials are configured.'
+          : 'Google Analytics reporting is not configured yet.',
+      details:
+        'Optional admin dashboard reporting for sessions, users, and top pages over the last 30 days.',
     },
     {
       id: 'google-calendar',

@@ -28,12 +28,13 @@ Personal training booking platform — built for trainers and their clients.
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 24.x
 - Supabase project
 - Stripe account
 - Google Cloud project (for Calendar API)
 - Resend account
-- Daily.co account (for virtual sessions)`r`n- Vimeo showcase/library URL (per product or global fallback)
+- Daily.co account (for virtual sessions)
+- Vimeo showcase/library URL (per product or global fallback)
 
 ### Setup
 
@@ -47,12 +48,31 @@ Personal training booking platform — built for trainers and their clients.
 2. **Configure environment:**
    ```bash
    cp .env.example .env.local
-   # Fill in all values in .env.local
+   # Fill in the values required for the integrations you plan to enable
    ```
+
+   Minimum required to boot the app:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+   Required before taking real payments:
+   - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
+   - `STRIPE_SECRET_KEY`
+   - `STRIPE_WEBHOOK_SECRET`
+   - `NEXT_PUBLIC_APP_URL`
+
+   Optional/feature-gated integrations:
+   - `RESEND_API_KEY` + `RESEND_FROM_EMAIL` for transactional email
+   - `RESEND_FROM_NAME` to override the sender brand shown in transactional email
+   - `GOOGLE_ANALYTICS_PROPERTY_ID` + `GOOGLE_ANALYTICS_CLIENT_EMAIL` + `GOOGLE_ANALYTICS_PRIVATE_KEY` for the admin dashboard analytics card
+   - `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` for trainer calendar connect
+   - `DAILY_API_KEY` for virtual sessions (`daily` / `hybrid` services)
+   - `VIMEO_LIBRARY_URL` as a fallback library link for digital products
+   - `SUPABASE_PROJECT_REF` + `SUPABASE_ACCESS_TOKEN` for the auth-branding helper script
 
 3. **Run Supabase migration:**
    - Recommended: link the project and run `supabase db push --linked`
-   - If you don't have a Supabase CLI access token handy, go to your Supabase project ? SQL Editor and paste/run `supabase/migrations/00001_initial_schema.sql`
+   - If you don't have a Supabase CLI access token handy, go to your Supabase project → SQL Editor and paste/run `supabase/migrations/00001_initial_schema.sql`
    - The migration creates the `meal-plans` bucket for you
    - If you created users or storage objects before the latest security hardening pass, run `node scripts/repair-supabase-state.mjs` to sync auth role metadata and lock down the `meal-plans` bucket
 
@@ -76,30 +96,48 @@ Personal training booking platform — built for trainers and their clients.
 6. **Create your admin account:**
    - Sign up at `/signup`
    - In Supabase SQL Editor, run the bootstrap SQL in `supabase/bootstrap/first-admin.sql` with your email
-   - Add yourself as a trainer from the Admin ? Trainers page
+   - Add yourself as a trainer from the Admin → Trainers page
 
 ### Production integrations checklist
 
 For `foundfit.net`, make sure these are configured before launch:
 
+- **Runtime / hosting**
+  - Use Node.js 24.x in the deployment target
+  - Set `NEXT_PUBLIC_APP_URL=https://foundfit.net`
+  - Build command: `npm run build`
 - **Supabase**
-  - Production project URL/keys in Vercel
+  - Production project URL/keys are set in the host environment
   - Latest migrations applied
   - `meal-plans` storage bucket exists
   - First admin bootstrapped
+  - If you want branded auth emails, run `node scripts/configure-supabase-auth-branding.mjs` with a valid `SUPABASE_ACCESS_TOKEN`
 - **Stripe**
-  - Production secret + webhook secret
+  - Production publishable key, secret key, and webhook secret are all set
+  - Publishable and secret keys use the same mode (`live` for launch)
   - Webhook endpoint points to `https://foundfit.net/api/webhooks/stripe`
   - Products/prices match service records in Supabase
 - **Google Calendar**
-  - OAuth client + refresh token belong to the production FoundFit calendar owner
-  - `GOOGLE_CALENDAR_ID` points at the real booking calendar
+  - OAuth client ID/secret are set for production
+  - Each trainer completes the Google connect flow from FoundFit; calendar IDs are stored per trainer in Supabase
 - **Resend**
   - `RESEND_FROM_EMAIL` uses a verified domain/email for `foundfit.net`
+  - Optional: set `RESEND_FROM_NAME=FoundFit` (or your preferred sender label)
+- **Google Analytics**
+  - Optional: add `GOOGLE_ANALYTICS_PROPERTY_ID`, `GOOGLE_ANALYTICS_CLIENT_EMAIL`, and `GOOGLE_ANALYTICS_PRIVATE_KEY` if you want the admin dashboard analytics snapshot to work in production
 - **Daily**
-  - `DAILY_API_KEY` is set for any service using `daily` or `hybrid` fulfillment
+  - `DAILY_API_KEY` is set for any active `daily` or `hybrid` service
 - **Vimeo library products**
-  - Each Vimeo/digital service has a valid `access_url` in the admin service editor
+  - Each Vimeo/digital service has a valid `access_url`, or `VIMEO_LIBRARY_URL` is set as the global fallback
+
+### Deployment notes
+
+- `netlify.toml` is now set up for a Next.js runtime/plugin-based Netlify deploy, but it still needs a real preview deployment test before launch.
+- If `foundfit.net` stays on Netlify, explicitly validate auth callbacks, middleware, server routes, and Stripe webhooks there before going live.
+- Vercel remains the easiest default for this repo because the app is a standard Next.js App Router project.
+- A GitHub Actions workflow now runs web lint/typecheck/build plus mobile lint/typecheck on pushes and pull requests; treat that as the minimum deploy gate.
+- Run `npm run readiness` in the target host environment to get a quick pass/fail summary of required production env plus warnings for optional integrations.
+- See `docs/deployment-foundfit-net.md` for the full production checklist.
 
 ## Project Structure
 
@@ -153,10 +191,13 @@ Travel fee for in-home training: $25 (configurable in admin settings).
 ## Deployment (Vercel)
 
 1. Push to GitHub
-2. Import project in Vercel
-3. Add all environment variables
-4. Set up Stripe webhook pointing to your Vercel URL
-5. Done!
+2. Confirm the `FoundFit CI` workflow is green
+3. Run `npm run readiness` against the production env values and clear any required failures
+4. Import project in Vercel
+5. Add all environment variables
+6. Set Node version to `24.x`
+7. Set up Stripe webhook pointing to your Vercel URL
+8. Run the smoke-test checklist in `docs/deployment-foundfit-net.md`
 
 ## License
 

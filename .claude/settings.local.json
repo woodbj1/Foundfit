@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /c/Users/woodb/Projects/foundfit log --oneline -15)"
+    ]
+  }
+}

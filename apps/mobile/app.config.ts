@@ -29,13 +29,7 @@ const androidPackage = isDevelopment
 export default ({ config }: ConfigContext): ExpoConfig => {
   const plugins: NonNullable<ExpoConfig['plugins']> = [
     'expo-router',
-    [
-      'expo-build-properties',
-      {
-        ios: { newArchEnabled: false },
-        android: { newArchEnabled: false },
-      },
-    ],
+
     [
       'expo-splash-screen',
       {

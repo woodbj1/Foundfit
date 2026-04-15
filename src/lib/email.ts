@@ -5,8 +5,8 @@ import { SITE } from '@/lib/site-config'
 
 let resend: Resend | null = null
 
-const EMAIL_BRAND_NAME = process.env.RESEND_FROM_NAME || 'Foundation Fitness'
-const EMAIL_TAGLINE = 'Empowering Women Through Fitness'
+const EMAIL_BRAND_NAME = process.env.RESEND_FROM_NAME || 'FoundFit'
+const EMAIL_TAGLINE = SITE.tagline || 'Personal Training in Acworth, GA'
 const EMAIL_SUPPORT_ADDRESS = SITE.email || 'info@foundfit.net'
 const EMAIL_FALLBACK_ASSET_BASE_URL = 'https://foundfit.net'
 const fromEmail = process.env.RESEND_FROM_EMAIL || 'noreply@foundfit.net'
@@ -620,7 +620,7 @@ export function trainerWelcomeEmail(
   return {
     subject: `Your ${EMAIL_BRAND_NAME} trainer setup is ready`,
     html: renderBrandedEmail({
-      title: 'Welcome to Foundation Fitness',
+      title: `Welcome to ${EMAIL_BRAND_NAME}`,
       bodyHtml: `
         <p style="margin: 0; font-size: 16px; line-height: 1.7; color: #332145;">
           Hey ${escapeHtml(fullName)}, your trainer account is ready.

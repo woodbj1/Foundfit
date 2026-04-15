@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAppUrlForPath } from '@/lib/app-url'
 import { createAdminClient, createClient } from '@/lib/supabase/server'
-import { sendEmail } from '@/lib/email'
-import { SITE } from '@/lib/site-config'
+import { sendEmail, trainerWelcomeEmail } from '@/lib/email'
 
 interface ExistingProfile {
   id: string
@@ -18,40 +17,6 @@ interface TrainerRecord {
 function generatePassword(length = 16): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%'
   return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
-}
-
-function trainerWelcomeEmail(
-  fullName: string,
-  email: string,
-  request: NextRequest,
-  tempPassword?: string
-) {
-  const setupUrl = getAppUrlForPath(`/trainer-setup?email=${encodeURIComponent(email)}`, request)
-
-  return {
-    subject: `Your ${SITE.name} trainer setup is ready`,
-    html: `
-      <div style="font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: linear-gradient(135deg, #7c3aed, #ec4899); padding: 32px; border-radius: 12px 12px 0 0;">
-          <h1 style="color: white; margin: 0; font-size: 24px;">Welcome to ${SITE.name}</h1>
-        </div>
-        <div style="background: #fff; padding: 32px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
-          <p style="font-size: 16px; color: #374151;">Hey ${fullName}, your trainer account is ready.</p>
-          <div style="background: #f9fafb; padding: 16px; border-radius: 8px; margin: 16px 0;">
-            <p style="margin: 4px 0; color: #4b5563;"><strong>Email:</strong> ${email}</p>
-            ${tempPassword ? `<p style="margin: 4px 0; color: #4b5563;"><strong>Temporary password:</strong> ${tempPassword}</p>` : ''}
-          </div>
-          <p style="color: #6b7280;">
-            Use the link below to finish setup, create your password, and connect your personal Google Calendar so only your availability is used for bookings.
-          </p>
-          <a href="${setupUrl}"
-             style="display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">
-            Finish Trainer Setup &rarr;
-          </a>
-        </div>
-      </div>
-    `,
-  }
 }
 
 export async function POST(req: NextRequest) {
@@ -179,7 +144,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const shouldSendPassword = !normalizedExistingProfile?.id
+    const createdUser = !normalizedExistingProfile?.id
+    const shouldSendPassword = createdUser
+    const setupUrl = getAppUrlForPath(`/trainer-setup?email=${encodeURIComponent(email)}`, req)
     let emailedCredentials = false
 
     if (process.env.RESEND_API_KEY) {
@@ -187,7 +154,7 @@ export async function POST(req: NextRequest) {
         const emailData = trainerWelcomeEmail(
           fullName,
           email,
-          req,
+          setupUrl,
           shouldSendPassword ? tempPassword : undefined
         )
         await sendEmail({ to: email, ...emailData })
@@ -199,8 +166,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      createdUser: !normalizedExistingProfile?.id,
+      createdUser,
       emailedCredentials,
+      setupUrl: createdUser ? setupUrl : undefined,
+      tempPassword: createdUser && !emailedCredentials ? tempPassword : undefined,
     })
   } catch (err: unknown) {
     console.error('[POST /api/admin/trainers]', err)
