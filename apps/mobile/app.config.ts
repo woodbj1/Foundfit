@@ -48,6 +48,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         remindersPermission: false,
       },
     ],
+
+    // Fix iOS 26 TurboModule crash (facebook/react-native#54859)
+    // Disables Dead Code Stripping when building RN from source
+    './plugins/with-turbomodule-crash-fix',
   ]
 
   return {

@@ -1,0 +1,20 @@
+diff --git a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+index 6646570..d622780 100644
+--- a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
++++ b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+@@ -470,7 +470,14 @@ void ObjCTurboModule::performVoidMethodInvocation(
+     @try {
+       [inv invokeWithTarget:strongModule];
+     } @catch (NSException *exception) {
+-      throw convertNSExceptionToJSError(runtime, exception, std::string{moduleName}, methodNameStr);
++      // Cannot rethrow C++ exceptions from async dispatch - nothing can catch them.
++      // Log the error for debugging purposes instead of crashing.
++      // See: https://github.com/facebook/react-native/pull/55390
++      RCTLogError(
++          @"Exception thrown while invoking async method %s.%s: %@",
++          moduleName,
++          methodNameStr.c_str(),
++          exception);
+     } @finally {
+       [retainedObjectsForInvocation removeAllObjects];
+     }

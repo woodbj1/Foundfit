@@ -1,8 +1,9 @@
 {
   "name": "foundfit-mobile",
-  "main": "./src/diagnostic-entry.js",
+  "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
+    "postinstall": "patch-package",
     "start": "cross-env APP_VARIANT=development expo start",
     "start:preview": "cross-env APP_VARIANT=preview expo start",
     "start:production": "cross-env APP_VARIANT=production expo start",
@@ -46,6 +47,7 @@
   "devDependencies": {
     "@types/react": "~19.2.2",
     "cross-env": "^10.1.0",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   },
   "private": true
