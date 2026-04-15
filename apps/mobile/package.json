@@ -1,6 +1,6 @@
 {
   "name": "foundfit-mobile",
-  "main": "expo-router/entry",
+  "main": "./src/diagnostic-entry.js",
   "version": "1.0.0",
   "scripts": {
     "start": "cross-env APP_VARIANT=development expo start",
