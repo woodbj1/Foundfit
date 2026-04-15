@@ -1,3 +1,68 @@
+diff --git a/node_modules/react-native/React/Base/RCTAssert.m b/node_modules/react-native/React/Base/RCTAssert.m
+index 1b8b187..e981f2e 100644
+--- a/node_modules/react-native/React/Base/RCTAssert.m
++++ b/node_modules/react-native/React/Base/RCTAssert.m
+@@ -127,9 +127,7 @@ void RCTFatal(NSError *error)
+   if (fatalHandler) {
+     fatalHandler(error);
+   } else {
+-#if DEBUG
+     @try {
+-#endif
+       NSString *name = [NSString stringWithFormat:@"%@: %@", RCTFatalExceptionName, error.localizedDescription];
+ 
+       // Truncate the localized description to 175 characters to avoid wild screen overflows
+@@ -145,10 +143,12 @@ void RCTFatal(NSError *error)
+       // reason: <underlying error description plus JS stack trace, truncated to 175 characters>
+       // userInfo: <underlying error userinfo, plus untruncated description plus JS stack trace>
+       @throw [[NSException alloc] initWithName:name reason:message userInfo:userInfo];
+-#if DEBUG
+     } @catch (NSException *e) {
++      // iOS 26+: @throw in async/C++ contexts causes failed_throw → SIGABRT.
++      // Catch and log instead of letting the uncaught throw crash the app.
++      // See: https://github.com/facebook/react-native/issues/54859
++      RCTLogError(@"RCTFatal: %@", error.localizedDescription);
+     }
+-#endif
+   }
+ }
+ 
+@@ -211,14 +211,14 @@ void RCTFatalException(NSException *exception)
+   if (fatalExceptionHandler) {
+     fatalExceptionHandler(exception);
+   } else {
+-#if DEBUG
+     @try {
+-#endif
+       @throw exception;
+-#if DEBUG
+     } @catch (NSException *e) {
++      // iOS 26+: @throw in async/C++ contexts causes failed_throw → SIGABRT.
++      // Catch and log instead of letting the uncaught throw crash the app.
++      // See: https://github.com/facebook/react-native/issues/54859
++      RCTLogError(@"RCTFatalException: %@: %@", exception.name, exception.reason);
+     }
+-#endif
+   }
+ }
+ 
+diff --git a/node_modules/react-native/React/CxxModule/RCTNativeModule.mm b/node_modules/react-native/React/CxxModule/RCTNativeModule.mm
+index 9d35eb7..ed34065 100644
+--- a/node_modules/react-native/React/CxxModule/RCTNativeModule.mm
++++ b/node_modules/react-native/React/CxxModule/RCTNativeModule.mm
+@@ -214,7 +214,11 @@ static MethodCallResult invokeInner(
+ 
+     // Pass on JS exceptions
+     if ([exception.name hasPrefix:RCTFatalExceptionName]) {
+-      @throw exception;
++      // iOS 26+: @throw in async/C++ contexts causes failed_throw → SIGABRT.
++      // Log instead of rethrowing.
++      // See: https://github.com/facebook/react-native/issues/54859
++      RCTLogError(@"Fatal exception in native module: %@: %@", exception.name, exception.reason);
++      return std::nullopt;
+     }
+ 
+ #if RCT_DEBUG
 diff --git a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
 index 6646570..fa91949 100644
 --- a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
