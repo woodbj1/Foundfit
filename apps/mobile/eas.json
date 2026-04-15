@@ -10,7 +10,8 @@
         "APP_VARIANT": "development",
         "EXPO_PUBLIC_APP_URL": "https://foundfit.net",
         "EXPO_PUBLIC_SUPABASE_URL": "https://lpkzufdjtrksbiazwiwv.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxwa3p1ZmRqdHJrc2JpYXp3aXd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NTg5OTcsImV4cCI6MjA4MzAzNDk5N30.ynec0ex4X9zFy18QjGIDCrjLzvnPRrhdpJZ2ArzL9xw"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxwa3p1ZmRqdHJrc2JpYXp3aXd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NTg5OTcsImV4cCI6MjA4MzAzNDk5N30.ynec0ex4X9zFy18QjGIDCrjLzvnPRrhdpJZ2ArzL9xw",
+        "EXPO_USE_PRECOMPILED_MODULES": "0"
       }
     },
     "simulator": {
@@ -25,7 +26,8 @@
         "APP_VARIANT": "preview",
         "EXPO_PUBLIC_APP_URL": "https://foundfit.net",
         "EXPO_PUBLIC_SUPABASE_URL": "https://lpkzufdjtrksbiazwiwv.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxwa3p1ZmRqdHJrc2JpYXp3aXd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NTg5OTcsImV4cCI6MjA4MzAzNDk5N30.ynec0ex4X9zFy18QjGIDCrjLzvnPRrhdpJZ2ArzL9xw"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxwa3p1ZmRqdHJrc2JpYXp3aXd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NTg5OTcsImV4cCI6MjA4MzAzNDk5N30.ynec0ex4X9zFy18QjGIDCrjLzvnPRrhdpJZ2ArzL9xw",
+        "EXPO_USE_PRECOMPILED_MODULES": "0"
       }
     },
     "production": {
@@ -34,7 +36,8 @@
         "APP_VARIANT": "production",
         "EXPO_PUBLIC_APP_URL": "https://foundfit.net",
         "EXPO_PUBLIC_SUPABASE_URL": "https://lpkzufdjtrksbiazwiwv.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxwa3p1ZmRqdHJrc2JpYXp3aXd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NTg5OTcsImV4cCI6MjA4MzAzNDk5N30.ynec0ex4X9zFy18QjGIDCrjLzvnPRrhdpJZ2ArzL9xw"
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxwa3p1ZmRqdHJrc2JpYXp3aXd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NTg5OTcsImV4cCI6MjA4MzAzNDk5N30.ynec0ex4X9zFy18QjGIDCrjLzvnPRrhdpJZ2ArzL9xw",
+        "EXPO_USE_PRECOMPILED_MODULES": "0"
       }
     }
   },

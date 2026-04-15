@@ -1,47 +1,114 @@
-// MINIMAL TEST BUILD - stripped to isolate crash cause
-// All native module imports removed. If this still crashes,
-// the issue is in React Native / Expo / iOS compatibility, not our app code.
+import 'react-native-gesture-handler'
+// import '@/lib/runtime-errors'
 
 import { Stack } from 'expo-router'
-import { Text, View, StyleSheet } from 'react-native'
+import type { ErrorBoundaryProps } from 'expo-router'
+import { StatusBar } from 'expo-status-bar'
+import { useEffect, useState } from 'react'
+import { StyleSheet, Text, View } from 'react-native'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { SafeAreaProvider } from 'react-native-safe-area-context'
+
+import { colors } from '@/lib/theme'
+// import { getLatestRuntimeError, subscribeToRuntimeErrors } from '@/lib/runtime-errors'
+import { AuthProvider } from '@/providers/auth-provider'
 
 export default function RootLayout() {
+  // const [runtimeError, setRuntimeError] = useState<string | null>(getLatestRuntimeError())
+
+  // useEffect(() => {
+  //   return subscribeToRuntimeErrors(setRuntimeError)
+  // }, [])
+
+  // if (runtimeError) {
+  //   return (
+  //     <GestureHandlerRootView style={{ flex: 1 }}>
+  //       <SafeAreaProvider>
+  //         <View style={styles.errorScreen}>
+  //           <View style={styles.errorCard}>
+  //             <Text style={styles.errorTitle}>FoundFit needs a quick configuration fix</Text>
+  //             <Text style={styles.errorBody}>{runtimeError}</Text>
+  //           </View>
+  //         </View>
+  //       </SafeAreaProvider>
+  //     </GestureHandlerRootView>
+  //   )
+  // }
+
   return (
-    <View style={{ flex: 1, backgroundColor: '#fbf6fd' }}>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: '#fbf6fd' },
-        }}
-      />
-    </View>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <StatusBar style="dark" backgroundColor={colors.background} />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.background },
+            }}
+          />
+        </AuthProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   )
 }
 
-export function ErrorBoundary({ error }: { error: Error }) {
+export function ErrorBoundary({ error }: ErrorBoundaryProps) {
   return (
-    <View style={styles.errorScreen}>
-      <Text style={styles.errorTitle}>FoundFit Error</Text>
-      <Text style={styles.errorBody}>{error.message}</Text>
-    </View>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <View style={styles.errorScreen}>
+          <View style={styles.errorCard}>
+            <Text style={styles.errorTitle}>FoundFit hit an app error</Text>
+            <Text style={styles.errorBody}>
+              {error.message || 'The app ran into a startup issue before the first screen could finish loading.'}
+            </Text>
+          </View>
+        </View>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   )
 }
 
 const styles = StyleSheet.create({
+  loadingScreen: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    gap: 12,
+    backgroundColor: colors.background,
+  },
+  loadingTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  loadingBody: {
+    fontSize: 15,
+    color: colors.textMuted,
+  },
   errorScreen: {
     flex: 1,
     justifyContent: 'center',
     padding: 24,
-    backgroundColor: '#fbf6fd',
+    backgroundColor: colors.background,
+  },
+  errorCard: {
+    borderRadius: 24,
+    padding: 20,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 12,
   },
   errorTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#241033',
+    color: colors.text,
   },
   errorBody: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#6c587c',
+    color: colors.textMuted,
   },
 })

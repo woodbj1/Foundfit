@@ -1,27 +1,57 @@
-// MINIMAL TEST BUILD - stripped to isolate crash cause
-import { Text, View } from 'react-native'
+import { ActivityIndicator, Text, View } from 'react-native'
+import { Redirect } from 'expo-router'
+
+import { colors } from '@/lib/theme'
+import { useAuth } from '@/providers/auth-provider'
 
 export default function IndexScreen() {
-  return (
-    <View
-      style={{
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#fbf6fd',
-        padding: 24,
-      }}
-    >
-      <Text style={{ fontSize: 28, fontWeight: '800', color: '#241033' }}>
-        FoundFit
-      </Text>
-      <Text style={{ fontSize: 16, color: '#6c587c', marginTop: 8 }}>
-        Minimal test build - if you see this, the app launched successfully!
-      </Text>
-      <Text style={{ fontSize: 13, color: '#9a8aac', marginTop: 24 }}>
-        Build 18 - Isolation Test
-      </Text>
-    </View>
-  )
-}
+  const { session, loading, startupError } = useAuth()
+
+  if (loading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.background,
+        }}
+      >
+        <ActivityIndicator color={colors.primaryDark} size="large" />
+      </View>
+    )
+  }
+
+  if (startupError) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 24,
+          backgroundColor: colors.background,
+        }}
+      >
+        <View
+          style={{
+            width: '100%',
+            borderRadius: 24,
+            borderWidth: 1,
+            borderColor: '#fde1e1',
+            backgroundColor: '#fff5f5',
+            padding: 20,
+            gap: 10,
+          }}
+        >
+          <Text style={{ fontSize: 22, fontWeight: '800', color: colors.text }}>
+            FoundFit could not start
+          </Text>
+          <Text style={{ lineHeight: 22, color: colors.textMuted }}>{startupError}</Text>
+        </View>
+      </View>
+    )
+  }
+
+  return <Redirect href={session ? '/dashboard' : '/login'} />
 }
