@@ -434,10 +434,3 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 })
-    gap: spacing.sm,
-  },
-  sessionMeta: {
-    color: colors.textMuted,
-    lineHeight: 22,
-  },
-})
