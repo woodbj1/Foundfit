@@ -22,8 +22,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     let isMounted = true
+    let unsubscribe: (() => void) | undefined
 
-    async function restoreSession() {
+    async function init() {
       try {
         const supabase = await getSupabaseClient()
 
@@ -35,6 +36,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
           return
         }
 
+        // Listen for all auth state changes (sign-in, sign-out, token refresh)
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(
+          (_event, newSession) => {
+            if (isMounted) {
+              setSession(newSession)
+              setStartupError(null)
+            }
+          }
+        )
+        unsubscribe = () => subscription.unsubscribe()
+
+        // Restore existing session on mount
         const { data, error: sessionError } = await supabase.auth.getSession()
 
         if (!isMounted) {
@@ -62,10 +75,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
     }
 
-    void restoreSession()
+    void init()
 
     return () => {
       isMounted = false
+      unsubscribe?.()
     }
   }, [])
 
@@ -76,7 +90,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       throw new Error(startupError || 'Supabase is not configured for this build.')
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
@@ -85,6 +99,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       throw error
     }
 
+    setSession(data.session)
     setStartupError(null)
   }
 
@@ -95,7 +110,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       throw new Error(startupError || 'Supabase is not configured for this build.')
     }
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -110,6 +125,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       throw error
     }
 
+    setSession(data.session)
     setStartupError(null)
   }
 
@@ -126,6 +142,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       throw error
     }
 
+    setSession(null)
     setStartupError(null)
   }
 
