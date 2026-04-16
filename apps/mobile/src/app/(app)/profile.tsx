@@ -52,7 +52,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <Screen title="Profile" subtitle="Your client details, access, and web account links.">
+    <Screen title="Profile" subtitle="Your membership and account details.">
       {loading || !data ? (
         <SectionCard>
           <Text style={styles.loadingText}>Loading profile…</Text>
@@ -69,7 +69,7 @@ export default function ProfileScreen() {
           </SectionCard>
 
           <SectionCard>
-            <SectionTitle title="Current Products" subtitle="What is active on your account." />
+            <SectionTitle title="Virtual Studio Membership" subtitle="Your subscription status." />
 
             {data.access.primarySubscription ? (
               <View style={styles.productCard}>
@@ -79,37 +79,30 @@ export default function ProfileScreen() {
                 </Text>
                 {data.access.primarySubscription.unitAmountCents ? (
                   <Text style={styles.meta}>
-                    {formatPrice(data.access.primarySubscription.unitAmountCents)} billed monthly
+                    {formatPrice(data.access.primarySubscription.unitAmountCents)}/month
                   </Text>
                 ) : null}
               </View>
-            ) : null}
-
-            {data.access.activePacks.map((pack) => (
-              <View key={pack.id} style={styles.productCard}>
-                <Text style={styles.productTitle}>{pack.serviceName}</Text>
-                <Text style={styles.meta}>{pack.remainingSessions} sessions remaining</Text>
-                {pack.expiresAt ? <Text style={styles.meta}>Expires {formatDateInTimeZone(pack.expiresAt)}</Text> : null}
-              </View>
-            ))}
-
-            {data.access.libraryAccess ? (
-              <View style={styles.productCard}>
-                <Text style={styles.productTitle}>{data.access.libraryAccess.serviceName}</Text>
-                <Text style={styles.meta}>Virtual studio access is active.</Text>
-              </View>
-            ) : null}
-
-            {!data.access.primarySubscription && data.access.activePacks.length === 0 && !data.access.libraryAccess ? (
+            ) : (
               <EmptyState
-                title="No active products"
-                message="Use the web portal to purchase packages or manage billing while the native app stays focused on training."
+                title="No active membership"
+                message="Subscribe to the Virtual Studio ($50/mo) to access live workouts, 1-on-1 virtual sessions, and the workout library."
               />
-            ) : null}
+            )}
           </SectionCard>
 
           <SectionCard>
-            <SectionTitle title="Web Account" subtitle="Billing, purchases, and admin-heavy account tasks stay on the web for now." />
+            <SectionTitle title="What's Included" subtitle="Your Virtual Studio membership gives you:" />
+            <View style={styles.featureList}>
+              <Text style={styles.featureItem}>• Daily live group workouts with your trainer</Text>
+              <Text style={styles.featureItem}>• 1-on-1 virtual sessions ($50/hour)</Text>
+              <Text style={styles.featureItem}>• Full workout library with guided programs</Text>
+              <Text style={styles.featureItem}>• Workout of the Day and custom builders</Text>
+            </View>
+          </SectionCard>
+
+          <SectionCard>
+            <SectionTitle title="Account" subtitle="Manage billing and account settings on the web." />
             <SecondaryButton label="Open FoundFit on the Web" onPress={() => openExternalUrl(env.appUrl)} />
           </SectionCard>
 
@@ -149,5 +142,13 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
     color: colors.text,
+  },
+  featureList: {
+    gap: 8,
+  },
+  featureItem: {
+    color: colors.textMuted,
+    lineHeight: 22,
+    fontSize: 15,
   },
 })

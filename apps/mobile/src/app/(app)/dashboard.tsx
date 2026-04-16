@@ -6,22 +6,23 @@ import { Screen } from '@/components/foundfit/screen'
 import {
   EmptyState,
   MetricCard,
+  Pill,
   PrimaryButton,
   SectionCard,
   SectionTitle,
   SecondaryButton,
 } from '@/components/foundfit/ui'
 import { apiRequest } from '@/lib/api'
-import { openExternalUrl } from '@/lib/external-url'
-import { formatDateInTimeZone, formatPrice, formatTimeRangeInTimeZone, getLocationLabel } from '@/lib/format'
+import { formatDateInTimeZone, formatPrice, formatTimeInTimeZone, formatTimeRangeInTimeZone } from '@/lib/format'
 import { colors, spacing } from '@/lib/theme'
 import { useAuth } from '@/providers/auth-provider'
-import type { MobileDashboardResponse } from '@/types/foundfit'
+import type { MobileDashboardResponse, MobileLiveWorkoutResponse } from '@/types/foundfit'
 
 export default function DashboardScreen() {
   const router = useRouter()
   const { session } = useAuth()
   const [data, setData] = useState<MobileDashboardResponse | null>(null)
+  const [liveData, setLiveData] = useState<MobileLiveWorkoutResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -35,11 +36,17 @@ export default function DashboardScreen() {
         setLoading(true)
       }
 
-      const response = await apiRequest<MobileDashboardResponse>('/api/mobile/dashboard', {
-        accessToken: session.access_token,
-      })
+      const [dashboardResponse, liveResponse] = await Promise.all([
+        apiRequest<MobileDashboardResponse>('/api/mobile/dashboard', {
+          accessToken: session.access_token,
+        }),
+        apiRequest<MobileLiveWorkoutResponse>('/api/mobile/live-workout', {
+          accessToken: session.access_token,
+        }).catch(() => null),
+      ])
 
-      setData(response)
+      setData(dashboardResponse)
+      if (liveResponse) setLiveData(liveResponse)
     } catch (error) {
       Alert.alert('Could not load dashboard', error instanceof Error ? error.message : 'Please try again.')
     } finally {
@@ -52,10 +59,12 @@ export default function DashboardScreen() {
     void loadDashboard()
   }, [loadDashboard])
 
+  const virtualBookings = data?.bookings.filter((b) => b.locationType === 'virtual') ?? []
+
   return (
     <Screen
       title={data?.profile?.full_name ? `Hey, ${data.profile.full_name.split(' ')[0]}!` : 'FoundFit'}
-      subtitle="Your training home for sessions, progress, and your virtual studio."
+      subtitle="Your virtual studio home."
       refreshing={refreshing}
       onRefresh={() => loadDashboard(true)}
       rightAction={
@@ -71,62 +80,71 @@ export default function DashboardScreen() {
         </SectionCard>
       ) : (
         <>
-          <View style={styles.metricsRow}>
-            <MetricCard
-              label="Active Plan"
-              value={data.summary.activePlanName || 'None'}
-              detail={data.access.primarySubscription ? 'Recurring subscription active' : 'Ready when you are'}
-            />
-            <MetricCard
-              label="Sessions Left"
-              value={data.summary.sessionsLeft == null ? 'Unlimited' : String(data.summary.sessionsLeft)}
-              detail="Available for studio, in-home, or virtual booking"
-            />
-          </View>
+          {/* Live Workout Banner */}
+          {liveData?.hasLiveWorkout ? (
+            <SectionCard style={liveData.liveWorkout.status === 'live' ? styles.liveBanner : undefined}>
+              <View style={styles.liveRow}>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={styles.liveTitle}>{liveData.liveWorkout.title}</Text>
+                  <Text style={styles.liveMeta}>
+                    {liveData.liveWorkout.status === 'live'
+                      ? `Live now with ${liveData.liveWorkout.trainerName}`
+                      : `Today at ${formatTimeInTimeZone(liveData.liveWorkout.startTime, liveData.liveWorkout.trainerTimezone)} • ${liveData.liveWorkout.durationMinutes} min`}
+                  </Text>
+                </View>
+                <Pill
+                  label={liveData.liveWorkout.status === 'live' ? '● LIVE' : 'Today'}
+                  tone={liveData.liveWorkout.status === 'live' ? 'success' : 'default'}
+                />
+              </View>
+              <PrimaryButton
+                label={liveData.liveWorkout.status === 'live' ? 'Join Live Workout' : 'View Details'}
+                onPress={() => router.push('/(app)/live')}
+              />
+            </SectionCard>
+          ) : null}
 
+          {/* Quick Metrics */}
           <View style={styles.metricsRow}>
             <MetricCard
-              label="Confirmed"
+              label="Virtual Sessions"
               value={String(data.summary.confirmedCount)}
-              detail="Upcoming sessions already on the calendar"
+              detail="Confirmed upcoming"
             />
             <MetricCard
               label="Pending"
               value={String(data.summary.pendingCount)}
-              detail="Waiting on trainer review"
+              detail="Awaiting confirmation"
             />
           </View>
 
+          {/* Quick Actions */}
           <SectionCard>
             <SectionTitle
               title="Quick Actions"
-              subtitle="Jump into what you need next."
+              subtitle="Jump into what you need."
             />
             <View style={styles.actionRow}>
-              <PrimaryButton label="Book a Session" onPress={() => router.push('/(app)/book')} />
-              <SecondaryButton label="View Sessions" onPress={() => router.push('/(app)/sessions')} />
+              <PrimaryButton label="Book Virtual Session" onPress={() => router.push('/(app)/book')} />
+              <SecondaryButton label="Open Studio" onPress={() => router.push('/(app)/library')} />
             </View>
-            {data.access.libraryAccess ? (
-              <View style={{ marginTop: spacing.sm }}>
-                <SecondaryButton label="Open Virtual Studio" onPress={() => router.push('/(app)/library')} />
-              </View>
-            ) : null}
           </SectionCard>
 
+          {/* Upcoming Virtual Sessions */}
           <SectionCard>
             <SectionTitle
-              title="Upcoming Sessions"
-              subtitle="Your next confirmed and pending sessions."
+              title="Upcoming Virtual Sessions"
+              subtitle="Your next 1-on-1 sessions with your trainer."
             />
-            {data.bookings.length === 0 ? (
+            {virtualBookings.length === 0 ? (
               <EmptyState
                 title="No upcoming sessions"
-                message="As soon as you book a session, it will show up here."
-                action={<PrimaryButton label="Book Your First Session" onPress={() => router.push('/(app)/book')} />}
+                message="Book a 1-on-1 virtual session with your trainer."
+                action={<PrimaryButton label="Book a Session" onPress={() => router.push('/(app)/book')} />}
               />
             ) : (
               <View style={styles.listWrap}>
-                {data.bookings.map((booking) => (
+                {virtualBookings.map((booking) => (
                   <View key={booking.id} style={styles.sessionRow}>
                     <View style={{ flex: 1, gap: 4 }}>
                       <Text style={styles.sessionDate}>
@@ -139,9 +157,6 @@ export default function DashboardScreen() {
                           booking.trainerTimezone
                         )}{' '}
                         • {booking.trainerName}
-                      </Text>
-                      <Text style={styles.sessionMeta}>
-                        {booking.serviceName} • {getLocationLabel(booking.locationType)}
                       </Text>
                     </View>
                     <Text
@@ -159,10 +174,11 @@ export default function DashboardScreen() {
             )}
           </SectionCard>
 
+          {/* Subscription Status */}
           <SectionCard>
             <SectionTitle
-              title="Current Access"
-              subtitle="What is active on your account right now."
+              title="Your Membership"
+              subtitle="Virtual Studio access details."
             />
             {data.access.primarySubscription ? (
               <View style={styles.accessCard}>
@@ -172,34 +188,16 @@ export default function DashboardScreen() {
                 </Text>
                 {data.access.primarySubscription.unitAmountCents ? (
                   <Text style={styles.accessMeta}>
-                    {formatPrice(data.access.primarySubscription.unitAmountCents)} billed monthly
+                    {formatPrice(data.access.primarySubscription.unitAmountCents)}/month
                   </Text>
                 ) : null}
               </View>
-            ) : null}
-
-            {data.access.activePacks.map((pack) => (
-              <View key={pack.id} style={styles.accessCard}>
-                <Text style={styles.accessTitle}>{pack.serviceName}</Text>
-                <Text style={styles.accessMeta}>{pack.remainingSessions} sessions remaining</Text>
-                {pack.expiresAt ? (
-                  <Text style={styles.accessMeta}>Expires {formatDateInTimeZone(pack.expiresAt)}</Text>
-                ) : null}
-              </View>
-            ))}
-
-            {data.access.libraryAccess && data.access.libraryAccess.accessUrl ? (
-              <View style={styles.accessCard}>
-                <Text style={styles.accessTitle}>{data.access.libraryAccess.serviceName}</Text>
-                <Text style={styles.accessMeta}>Virtual studio access is active.</Text>
-                <View style={{ marginTop: spacing.sm }}>
-                  <SecondaryButton
-                    label="Open Full Library"
-                    onPress={() => openExternalUrl(data.access.libraryAccess!.accessUrl)}
-                  />
-                </View>
-              </View>
-            ) : null}
+            ) : (
+              <EmptyState
+                title="No active membership"
+                message="Subscribe to the Virtual Studio to access live workouts, 1-on-1 virtual sessions, and the workout library."
+              />
+            )}
           </SectionCard>
         </>
       )}
@@ -210,6 +208,24 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   loadingText: {
     color: colors.textMuted,
+  },
+  liveBanner: {
+    borderColor: colors.success,
+    borderWidth: 2,
+  },
+  liveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  liveTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  liveMeta: {
+    color: colors.textMuted,
+    lineHeight: 20,
   },
   metricsRow: {
     flexDirection: 'row',

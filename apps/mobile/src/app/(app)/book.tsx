@@ -19,7 +19,6 @@ import {
   formatRelativeMonthLabel,
   formatTimeInTimeZone,
   formatTimeRangeInTimeZone,
-  getLocationLabel,
 } from '@/lib/format'
 import { colors, spacing } from '@/lib/theme'
 import { useAuth } from '@/providers/auth-provider'
@@ -35,10 +34,6 @@ type AvailableSlotsResponse = {
   message?: string | null
 }
 
-function isVirtualOnlyService(service?: MobileBookableService | null) {
-  return service?.fulfillmentType === 'daily' || service?.fulfillmentType === 'hybrid'
-}
-
 export default function BookScreen() {
   const router = useRouter()
   const params = useLocalSearchParams<{ reschedule?: string }>()
@@ -51,8 +46,6 @@ export default function BookScreen() {
   const [selectedTrainer, setSelectedTrainer] = useState<MobileTrainerOption | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null)
-  const [locationType, setLocationType] = useState<'gym' | 'travel' | 'virtual'>('gym')
-  const [travelAddress, setTravelAddress] = useState('')
   const [notes, setNotes] = useState('')
   const [slots, setSlots] = useState<TimeSlot[]>([])
   const [slotsMessage, setSlotsMessage] = useState<string | null>(null)
@@ -69,12 +62,17 @@ export default function BookScreen() {
 
       setContext(response)
 
+      // Auto-select service (prefer virtual/daily services)
+      const virtualServices = response.services.filter(
+        (s) => s.fulfillmentType === 'daily' || s.fulfillmentType === 'hybrid' || s.fulfillmentType === 'booking'
+      )
+
       const nextService =
         response.rescheduleBooking
           ? response.services.find((service) => service.serviceId === response.rescheduleBooking?.serviceId) || null
-          : response.services.length === 1
-            ? response.services[0]
-            : null
+          : virtualServices.length === 1
+            ? virtualServices[0]
+            : virtualServices[0] || null
 
       setSelectedService(nextService)
 
@@ -93,8 +91,6 @@ export default function BookScreen() {
           ? response.rescheduleBooking.startTime.slice(0, 10)
           : format(new Date(), 'yyyy-MM-dd')
       )
-      setLocationType(response.rescheduleBooking?.locationType || 'gym')
-      setTravelAddress(response.rescheduleBooking?.travelAddress || '')
       setNotes(response.rescheduleBooking?.notes || '')
     } catch (error) {
       Alert.alert('Could not load booking options', error instanceof Error ? error.message : 'Please try again.')
@@ -129,14 +125,6 @@ export default function BookScreen() {
   }, [context?.trainers, selectedService, selectedTrainer, trainerOptions])
 
   useEffect(() => {
-    if (isVirtualOnlyService(selectedService)) {
-      setLocationType('virtual')
-    } else if (!context?.virtualLocationEnabled && locationType === 'virtual') {
-      setLocationType('gym')
-    }
-  }, [context?.virtualLocationEnabled, locationType, selectedService])
-
-  useEffect(() => {
     async function loadSlots() {
       if (!session?.access_token || !selectedService || !selectedTrainer || !selectedDate) {
         return
@@ -148,17 +136,17 @@ export default function BookScreen() {
         setSelectedSlot(null)
         setSlotsMessage(null)
 
-        const params = new URLSearchParams({
+        const searchParams = new URLSearchParams({
           date: selectedDate,
           trainer_id: selectedTrainer.id,
           service_id: selectedService.serviceId,
         })
 
         if (context?.rescheduleBooking?.id) {
-          params.set('exclude_booking_id', context.rescheduleBooking.id)
+          searchParams.set('exclude_booking_id', context.rescheduleBooking.id)
         }
 
-        const response = await apiRequest<AvailableSlotsResponse>(`/api/available-slots?${params.toString()}`, {
+        const response = await apiRequest<AvailableSlotsResponse>(`/api/available-slots?${searchParams.toString()}`, {
           accessToken: session.access_token,
         })
 
@@ -189,11 +177,6 @@ export default function BookScreen() {
       return
     }
 
-    if (locationType === 'travel' && !travelAddress.trim() && !isVirtualOnlyService(selectedService)) {
-      Alert.alert('Address required', 'Please add the client-home address for this session.')
-      return
-    }
-
     try {
       setBookingLoading(true)
       const isReschedule = Boolean(context?.rescheduleBooking)
@@ -208,20 +191,16 @@ export default function BookScreen() {
           service_id: selectedService.serviceId,
           trainer_id: selectedTrainer.id,
           start_time: selectedSlot.start,
-          location_type: isVirtualOnlyService(selectedService) ? 'virtual' : locationType,
-          travel_address:
-            !isVirtualOnlyService(selectedService) && locationType === 'travel'
-              ? travelAddress.trim()
-              : undefined,
+          location_type: 'virtual',
           notes: notes.trim() || undefined,
         }),
       })
 
       Alert.alert(
-        isReschedule ? 'Session updated' : 'Booking request submitted',
+        isReschedule ? 'Session updated' : 'Virtual session booked',
         isReschedule
           ? 'Your session has been rescheduled.'
-          : 'Your trainer will be notified right away.'
+          : 'Your trainer will be notified. You\'ll get a video link once confirmed.'
       )
       router.replace('/(app)/sessions')
     } catch (error) {
@@ -242,13 +221,10 @@ export default function BookScreen() {
     })
   }, [context])
 
-  const supportsVirtualLocation =
-    Boolean(context?.virtualLocationEnabled) && !isVirtualOnlyService(selectedService)
-
   return (
     <Screen
-      title={context?.rescheduleBooking ? 'Reschedule Session' : 'Book a Session'}
-      subtitle="Choose your trainer, an open time, and how you want to train."
+      title={context?.rescheduleBooking ? 'Reschedule Session' : 'Book Virtual Session'}
+      subtitle="Schedule a 1-on-1 virtual session with your trainer. $50/hour."
       refreshing={false}
       onRefresh={() => {
         void loadContext()
@@ -261,7 +237,7 @@ export default function BookScreen() {
       ) : context.services.length === 0 && !context.rescheduleBooking ? (
         <EmptyState
           title="No active booking access"
-          message="Buy or activate a session product on the web first, then your mobile booking flow will unlock here."
+          message="Your Virtual Studio subscription includes access to book 1-on-1 virtual sessions. Contact your trainer if you're having trouble."
         />
       ) : (
         <>
@@ -282,33 +258,38 @@ export default function BookScreen() {
             </SectionCard>
           ) : null}
 
-          <SectionCard>
-            <SectionTitle title="1. Service" subtitle="Use your active plan or remaining sessions." />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {context.services.map((service) => {
-                const selected = selectedService?.serviceId === service.serviceId
+          {/* Service selection - show if multiple services */}
+          {context.services.length > 1 ? (
+            <SectionCard>
+              <SectionTitle title="1. Service" subtitle="Select your session type." />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                {context.services.map((service) => {
+                  const selected = selectedService?.serviceId === service.serviceId
+                  return (
+                    <SegmentedButton
+                      key={service.serviceId}
+                      label={
+                        service.remainingSessions == null
+                          ? `${service.name}`
+                          : `${service.name} - ${service.remainingSessions} left`
+                      }
+                      selected={selected}
+                      onPress={() => setSelectedService(service)}
+                    />
+                  )
+                })}
+              </ScrollView>
+            </SectionCard>
+          ) : selectedService ? (
+            <SectionCard>
+              <Pill label={`${selectedService.name} • Virtual`} />
+            </SectionCard>
+          ) : null}
 
-                return (
-                  <SegmentedButton
-                    key={service.serviceId}
-                    label={
-                      service.remainingSessions == null
-                        ? `${service.name} - Unlimited`
-                        : `${service.name} - ${service.remainingSessions} left`
-                    }
-                    selected={selected}
-                    onPress={() => setSelectedService(service)}
-                  />
-                )
-              })}
-            </ScrollView>
-          </SectionCard>
-
-          <SectionCard>
-            <SectionTitle title="2. Trainer" subtitle="Every booking is tied to a trainer." />
-            {trainerOptions.length === 0 ? (
-              <EmptyState title="No trainers available" message="There are no bookable trainers set up yet." />
-            ) : (
+          {/* Trainer selection - show if multiple trainers */}
+          {trainerOptions.length > 1 ? (
+            <SectionCard>
+              <SectionTitle title="Trainer" subtitle="Select your trainer." />
               <View style={styles.optionList}>
                 {trainerOptions.map((trainer) => (
                   <PressableRow
@@ -320,11 +301,11 @@ export default function BookScreen() {
                   />
                 ))}
               </View>
-            )}
-          </SectionCard>
+            </SectionCard>
+          ) : null}
 
           <SectionCard>
-            <SectionTitle title="3. Date" subtitle="Booking opens within your current booking window." />
+            <SectionTitle title="Date" subtitle="Pick your preferred day." />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
               {availableDates.map((date) => (
                 <SegmentedButton
@@ -338,7 +319,7 @@ export default function BookScreen() {
           </SectionCard>
 
           <SectionCard>
-            <SectionTitle title="4. Time" subtitle={slotsMessage || 'Select one of the live open times below.'} />
+            <SectionTitle title="Time" subtitle={slotsMessage || 'Select an available time slot.'} />
             {slotsLoading ? (
               <Text style={styles.loadingText}>Checking availability…</Text>
             ) : slots.length === 0 ? (
@@ -361,54 +342,16 @@ export default function BookScreen() {
           </SectionCard>
 
           <SectionCard>
-            <SectionTitle title="5. Session Details" subtitle="Choose where you want the session delivered." />
-            <View style={styles.chipRow}>
-              <SegmentedButton
-                label="Studio"
-                selected={locationType === 'gym'}
-                onPress={() => setLocationType('gym')}
-              />
-              <SegmentedButton
-                label="My Home"
-                selected={locationType === 'travel'}
-                onPress={() => setLocationType('travel')}
-              />
-              {supportsVirtualLocation || isVirtualOnlyService(selectedService) ? (
-                <SegmentedButton
-                  label="Virtual"
-                  selected={locationType === 'virtual'}
-                  onPress={() => setLocationType('virtual')}
-                />
-              ) : null}
-            </View>
-
-            {locationType === 'travel' && !isVirtualOnlyService(selectedService) ? (
-              <Field
-                label="Client-home address"
-                value={travelAddress}
-                onChangeText={setTravelAddress}
-                placeholder="Street address for in-home training"
-              />
-            ) : null}
-
             <Field
-              label="Notes"
+              label="Notes (optional)"
               value={notes}
               onChangeText={setNotes}
               placeholder="Anything your trainer should know?"
               multiline
             />
 
-            {selectedService ? (
-              <Pill
-                label={`${selectedService.name} • ${getLocationLabel(
-                  isVirtualOnlyService(selectedService) ? 'virtual' : locationType
-                )}`}
-              />
-            ) : null}
-
             <PrimaryButton
-              label={context.rescheduleBooking ? 'Update Session' : 'Request Booking'}
+              label={context.rescheduleBooking ? 'Update Session' : 'Book Virtual Session'}
               onPress={handleSubmit}
               disabled={!selectedService || !selectedTrainer || !selectedSlot}
               loading={bookingLoading}
@@ -484,6 +427,13 @@ const styles = StyleSheet.create({
   slotGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  sessionMeta: {
+    color: colors.textMuted,
+    lineHeight: 22,
+  },
+})
     gap: spacing.sm,
   },
   sessionMeta: {

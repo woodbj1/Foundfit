@@ -118,3 +118,47 @@ export type MobileLibraryResponse =
         remainingSessions: number | null
       }
     }
+
+export type MobileSubscriptionStatusResponse =
+  | {
+      isSubscribed: false
+      message: string
+    }
+  | {
+      isSubscribed: true
+      subscription: {
+        id: string
+        serviceName: string
+        renewsAt: string
+        pricePerMonth: number
+      }
+    }
+
+export type LiveWorkoutInfo = {
+  id: string
+  title: string
+  description: string | null
+  scheduledDate: string
+  scheduledTime: string
+  durationMinutes: number
+  status: 'scheduled' | 'live' | 'ended' | 'cancelled'
+  startTime: string
+  endTime: string
+  trainerName: string
+  trainerTimezone: string
+}
+
+export type MobileLiveWorkoutResponse =
+  | {
+      hasLiveWorkout: false
+      message: string
+    }
+  | {
+      hasLiveWorkout: true
+      liveWorkout: LiveWorkoutInfo
+      joinUrl?: string
+      joinAvailability?: {
+        canJoin: boolean
+        message: string | null
+      }
+    }

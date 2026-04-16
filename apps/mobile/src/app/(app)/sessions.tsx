@@ -14,7 +14,7 @@ import {
 import { apiRequest } from '@/lib/api'
 import { addSessionToCalendar } from '@/lib/calendar'
 import { openExternalUrl } from '@/lib/external-url'
-import { formatDateInTimeZone, formatTimeRangeInTimeZone, getLocationLabel } from '@/lib/format'
+import { formatDateInTimeZone, formatTimeRangeInTimeZone } from '@/lib/format'
 import { colors, spacing } from '@/lib/theme'
 import { useAuth } from '@/providers/auth-provider'
 import type { MobileBooking, MobileSessionsResponse } from '@/types/foundfit'
@@ -59,7 +59,10 @@ export default function SessionsScreen() {
   const filteredSessions = useMemo(() => {
     const now = Date.now()
 
-    return sessions.filter((sessionItem) => {
+    // Only show virtual sessions in the mobile app
+    const virtualSessions = sessions.filter((s) => s.locationType === 'virtual')
+
+    return virtualSessions.filter((sessionItem) => {
       const startTime = new Date(sessionItem.startTime).getTime()
 
       if (filter === 'cancelled') {
@@ -122,8 +125,8 @@ export default function SessionsScreen() {
 
   return (
     <Screen
-      title="My Sessions"
-      subtitle="Manage upcoming appointments, rebook quickly, and keep your week moving."
+      title="Virtual Sessions"
+      subtitle="Your 1-on-1 virtual sessions with your trainer."
       refreshing={refreshing}
       onRefresh={() => loadSessions(true)}
     >
@@ -140,8 +143,8 @@ export default function SessionsScreen() {
       ) : filteredSessions.length === 0 ? (
         <EmptyState
           title="Nothing here yet"
-          message="Once you have sessions in this category, they will appear here."
-          action={filter === 'upcoming' ? <PrimaryButton label="Book a Session" onPress={() => router.push('/(app)/book')} /> : undefined}
+          message="Once you have virtual sessions in this category, they will appear here."
+          action={filter === 'upcoming' ? <PrimaryButton label="Book Virtual Session" onPress={() => router.push('/(app)/book')} /> : undefined}
         />
       ) : (
         <View style={styles.listWrap}>
@@ -157,7 +160,7 @@ export default function SessionsScreen() {
                     {booking.trainerName}
                   </Text>
                   <Text style={styles.sessionMeta}>
-                    {booking.serviceName} • {getLocationLabel(booking.locationType)}
+                    {booking.serviceName} • Virtual
                   </Text>
                 </View>
                 <Pill

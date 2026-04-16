@@ -1,2 +1,20 @@
 {
+  "extra": {
+    "eas": {
+      "projectId": "5d0ca62c-7ea8-4f9e-8d86-5cae3b880520"
+    }
+  },
+  "expo": {
+    "ios": {
+      "bundleIdentifier": "com.woodbj1.foundfit",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "5d0ca62c-7ea8-4f9e-8d86-5cae3b880520"
+      }
+    }
+  }
 }
