@@ -65,10 +65,43 @@ export default function WorkoutRepository() {
     }
   }, [])
 
-  useEffect(() => {
-    void fetchExercises()
-    void fetchBlocks()
+  // Auto-seed when tables are empty on first load
+  const autoSeed = useCallback(async () => {
+    setSeeding(true)
+    try {
+      const res = await fetch('/api/admin/seed-workouts', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Seeding failed')
+      toast.success(`Auto-seeded ${data.exercises} exercises and ${data.blocks} blocks from the workout catalog.`)
+      await fetchExercises()
+      await fetchBlocks()
+    } catch {
+      // silently fail — user can still click Seed Defaults manually
+    } finally {
+      setSeeding(false)
+    }
   }, [fetchExercises, fetchBlocks])
+
+  useEffect(() => {
+    const init = async () => {
+      const [exRes, blkRes] = await Promise.all([
+        fetch('/api/admin/exercises'),
+        fetch('/api/admin/workout-blocks'),
+      ])
+      const exData = exRes.ok ? (await exRes.json()).data : []
+      const blkData = blkRes.ok ? (await blkRes.json()).data : []
+      setExercises(exData || [])
+      setBlocks(blkData || [])
+      setExercisesLoading(false)
+      setBlocksLoading(false)
+
+      // If both tables are empty, auto-seed from workout catalog
+      if ((!exData || exData.length === 0) && (!blkData || blkData.length === 0)) {
+        await autoSeed()
+      }
+    }
+    void init()
+  }, [autoSeed])
 
   const handleDeleteExercise = async () => {
     if (!deleteExercise?.id) return
