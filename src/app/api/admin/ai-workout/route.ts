@@ -50,10 +50,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Admin access required.' }, { status: 403 })
   }
 
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.KIMI_API_KEY
   if (!apiKey) {
     return NextResponse.json(
-      { error: 'AI is not configured. Set OPENAI_API_KEY in your environment variables.' },
+      { error: 'AI is not configured. Set KIMI_API_KEY in your environment variables.' },
       { status: 503 }
     )
   }
@@ -71,14 +71,14 @@ export async function POST(request: NextRequest) {
       : `Generate an exercise based on this request: "${prompt}". Return a single JSON object with all exercise fields.`
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://api.moonshot.cn/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'kimi-k2-0711',
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt },
