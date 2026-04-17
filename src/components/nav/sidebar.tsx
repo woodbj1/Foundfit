@@ -16,6 +16,7 @@ import {
   LogOut,
   Menu,
   ShieldCheck,
+  Video,
 } from 'lucide-react'
 import BrandLogo from '@/components/brand/brand-logo'
 import { Button } from '@/components/ui/button'
@@ -55,6 +56,7 @@ const adminNav: NavItem[] = [
   { label: 'Earnings', href: '/admin/earnings', icon: DollarSign },
   { label: 'Services', href: '/admin/services', icon: Package },
   { label: 'Workouts', href: '/admin/workouts', icon: Dumbbell },
+  { label: 'Library', href: '/admin/library', icon: Video },
   { label: 'Trainers', href: '/admin/trainers', icon: ShieldCheck },
   { label: 'Clients', href: '/admin/clients', icon: Users },
   { label: 'Bookings', href: '/admin/bookings', icon: Calendar },
