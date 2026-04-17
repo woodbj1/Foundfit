@@ -283,7 +283,7 @@ export default function AdminLibraryPage() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Paste a Vimeo showcase, video, or folder URL. Clients with an active subscription or session pack for this service will see this content.
+                    Paste a Vimeo showcase URL (e.g. <code className="rounded bg-muted px-1 text-[11px]">https://vimeo.com/showcase/12345</code>). The showcase is embedded directly in the client&apos;s library page — no redirect to Vimeo.
                   </p>
                 </div>
 

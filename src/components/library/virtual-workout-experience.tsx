@@ -4,6 +4,8 @@ import type { ComponentType } from 'react'
 import { useMemo, useState } from 'react'
 import {
   BadgeCheck,
+  ChevronDown,
+  ChevronUp,
   Dices,
   Dumbbell,
   ExternalLink,
@@ -111,6 +113,7 @@ export default function VirtualWorkoutExperience({
   const [browseBodyPart, setBrowseBodyPart] = useState<WorkoutBodyPart | 'all'>('all')
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([])
   const [selectedExercise, setSelectedExercise] = useState<ExerciseDefinition | null>(null)
+  const [showShowcase, setShowShowcase] = useState(false)
 
   const browseBlocks = useMemo(() => {
     return browseBodyPart === 'all'
@@ -175,10 +178,14 @@ export default function VirtualWorkoutExperience({
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <Button onClick={() => setShowShowcase((prev) => !prev)} className="gap-2">
+              {showShowcase ? <ChevronUp className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
+              {showShowcase ? 'Hide Library' : 'Watch Library'}
+            </Button>
             <a href={accessUrl} target="_blank" rel="noopener noreferrer">
-              <Button className="gap-2">
+              <Button variant="outline" className="gap-2">
                 <ExternalLink className="h-4 w-4" />
-                Open Full Library
+                Open on Vimeo
               </Button>
             </a>
           </div>
@@ -190,6 +197,18 @@ export default function VirtualWorkoutExperience({
               <PlayCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <p>Your digital access is active. Jump into the guided library below whenever you are ready.</p>
             </div>
+          </div>
+        ) : null}
+
+        {showShowcase ? (
+          <div className="mt-6 overflow-hidden rounded-2xl border">
+            <iframe
+              src={accessUrl.includes('/embed') ? accessUrl : `${accessUrl.replace(/\/$/, '')}/embed`}
+              className="w-full aspect-video"
+              allow="autoplay; fullscreen; picture-in-picture"
+              allowFullScreen
+              title="FoundFit Video Library"
+            />
           </div>
         ) : null}
       </div>
@@ -690,12 +709,17 @@ export default function VirtualWorkoutExperience({
               </div>
 
               <DialogFooter showCloseButton>
-                <a href={accessUrl} target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" className="gap-2">
-                    <ExternalLink className="h-4 w-4" />
-                    Open Full Library
-                  </Button>
-                </a>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => {
+                    setSelectedExercise(null)
+                    setShowShowcase(true)
+                  }}
+                >
+                  <PlayCircle className="h-4 w-4" />
+                  Watch in Library
+                </Button>
               </DialogFooter>
             </>
           ) : null}
